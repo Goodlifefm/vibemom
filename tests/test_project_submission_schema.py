@@ -73,3 +73,14 @@ def test_validators_registered():
     assert "non_empty_200" in VALIDATORS
     assert "url_1000" in VALIDATORS
     assert "yes_no" in VALIDATORS
+
+
+def test_every_step_copy_id_exists_in_messages():
+    """Every step copy_id must be resolvable (audit_copy sanity)."""
+    from src.bot.messages import get_copy
+    for step in STEPS:
+        copy_id = step.get("copy_id")
+        if not copy_id:
+            continue
+        text = get_copy(copy_id)
+        assert text is not None and len(text.strip()) > 0, f"copy_id {copy_id!r} missing or empty in messages"

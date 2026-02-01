@@ -3,6 +3,8 @@ from src.bot.validators import (
     validate_description,
     validate_stack,
     validate_url,
+    validate_url_or_empty,
+    validate_max_len,
     validate_price,
     validate_contact,
     validate_what,
@@ -45,3 +47,39 @@ def test_parse_yes_no():
     assert parse_yes_no("no") is False
     assert parse_yes_no("что-то") is None
     assert parse_yes_no("") is None
+
+
+def test_validate_url_max_len():
+    ok, _ = validate_url("https://example.com/" + "a" * 1000, max_len=1000)
+    assert ok is False
+    ok, val = validate_url("https://example.com/short", max_len=1000)
+    assert ok is True
+    assert "short" in (val or "")
+
+
+def test_validate_url_or_empty():
+    ok, val = validate_url_or_empty("")
+    assert ok is True
+    assert val == ""
+    ok, val = validate_url_or_empty("  ")
+    assert ok is True
+    assert val == ""
+    ok, _ = validate_url_or_empty("not-a-url")
+    assert ok is False
+    ok, val = validate_url_or_empty("https://ok.com", max_len=100)
+    assert ok is True
+    assert "ok.com" in (val or "")
+
+
+def test_validate_max_len():
+    ok, val = validate_max_len("hello", 10)
+    assert ok is True
+    assert val == "hello"
+    ok, _ = validate_max_len("too long text", 5)
+    assert ok is False
+    ok, val = validate_max_len("", 10, allow_empty=True)
+    assert ok is True
+    assert val == ""
+    ok, val = validate_max_len("", 10, allow_empty=False)
+    assert ok is False
+    assert val is None

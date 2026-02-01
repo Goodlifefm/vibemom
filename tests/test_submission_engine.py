@@ -77,3 +77,42 @@ def test_resume_from_saved_state():
     data = set_step_id(data, "contact")
     step = get_current_step(data)
     assert step["state_id"] == "contact"
+
+
+def test_fsm_path_welcome_to_title_to_subtitle_back_to_title():
+    """Path: welcome -> next -> title -> next -> title_subtitle -> back -> title."""
+    from src.bot.project_submission_schema import first_step, get_step
+    data = {}
+    data = set_step_id(data, first_step()["state_id"])
+    step = get_current_step(data)
+    assert step["state_id"] == "welcome"
+    next_id = transition(step, "next")
+    assert next_id == "title"
+    data = set_step_id(data, next_id)
+    step = get_current_step(data)
+    assert step["state_id"] == "title"
+    next_id = transition(step, "next")
+    assert next_id == "title_subtitle"
+    data = set_step_id(data, next_id)
+    step = get_current_step(data)
+    assert step["state_id"] == "title_subtitle"
+    back_id = transition(step, "back")
+    assert back_id == "title"
+    data = set_step_id(data, back_id)
+    step = get_current_step(data)
+    assert step["state_id"] == "title"
+
+
+def test_fsm_path_skip_from_title_subtitle_to_description_intro():
+    """Path: title_subtitle -> skip -> description_intro."""
+    step = get_step("title_subtitle")
+    next_id = transition(step, "skip")
+    assert next_id == "description_intro"
+
+
+def test_fsm_path_preview_to_confirm_back_to_preview():
+    """Path: preview -> next -> confirm -> back -> preview."""
+    step = get_step("preview")
+    assert transition(step, "next") == "confirm"
+    step = get_step("confirm")
+    assert transition(step, "back") == "preview"

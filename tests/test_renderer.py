@@ -109,6 +109,25 @@ def test_answers_to_project_fields_backward_compat():
     assert out["contact"] == "C"
 
 
+def test_render_project_post_section_order():
+    """Section order stable: title -> description -> stack -> link -> price -> contact."""
+    out = render_project_post(
+        title="T",
+        description="D",
+        stack="S",
+        link="https://x.com",
+        price="P",
+        contact="C",
+    )
+    idx_title = out.find("T")
+    idx_desc = out.find("D")
+    idx_stack = out.find("S")
+    idx_link = out.find("https://x.com")
+    idx_price = out.find("P")
+    idx_contact = out.find("C")
+    assert idx_title < idx_desc < idx_stack < idx_link < idx_price < idx_contact
+
+
 def test_answers_to_project_fields_expanded():
     """New SPEC keys compose title, description, stack, link, price, contact."""
     answers = {
