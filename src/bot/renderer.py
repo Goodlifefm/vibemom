@@ -4,6 +4,34 @@ from src.bot.messages import get_copy
 from src.utils.text import escape_html
 
 
+def answers_to_project_fields(answers: dict) -> dict[str, str]:
+    """
+    Build title, description, stack, link, price, contact from FSM answers (SPEC 05).
+    Preserves backward compat: old 6-key answers used as-is when no new keys present.
+    """
+    def _join(*keys: str, sep: str = "\n") -> str:
+        parts = [str((answers.get(k) or "")).strip() for k in keys if (answers.get(k) or "").strip()]
+        return sep.join(parts).strip()
+
+    # Backward compat: only old flat keys
+    if answers.get("description") is not None and "description_what" not in answers:
+        return {
+            "title": str(answers.get("title") or "").strip(),
+            "description": str(answers.get("description") or "").strip(),
+            "stack": str(answers.get("stack") or "").strip(),
+            "link": str(answers.get("link") or "").strip(),
+            "price": str(answers.get("price") or "").strip(),
+            "contact": str(answers.get("contact") or "").strip(),
+        }
+    title = _join("title", "title_subtitle", sep=" ") or str(answers.get("title") or "").strip()
+    description = _join("description_intro", "description_what", "description_audience", "description_summary", "description_features")
+    stack = _join("stack", "stack_list", "stack_other")
+    link = _join("link", "link_demo", "link_confirm")
+    price = _join("price", "price_note", "price_currency")
+    contact = _join("contact", "contact_extra", "contact_preferred")
+    return {"title": title, "description": description, "stack": stack, "link": link, "price": price, "contact": contact}
+
+
 def _section(label: str, value: str) -> str:
     """One section: label + value, or empty string if value is empty."""
     v = (value or "").strip()

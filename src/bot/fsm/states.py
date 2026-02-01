@@ -2,13 +2,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class ProjectSubmissionStates(StatesGroup):
-    title = State()
-    description = State()
-    stack = State()
-    link = State()
-    price = State()
-    contact = State()
-    confirm = State()
+    """Single state for config-driven submission (step_id in data[_meta][project_submission_state])."""
+    filling = State()
 
 
 class BuyerRequestStates(StatesGroup):

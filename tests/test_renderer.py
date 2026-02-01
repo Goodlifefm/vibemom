@@ -1,4 +1,8 @@
-from src.bot.renderer import render_project_post, render_buyer_request_summary
+from src.bot.renderer import (
+    render_project_post,
+    render_buyer_request_summary,
+    answers_to_project_fields,
+)
 
 
 def test_render_project_post():
@@ -84,3 +88,53 @@ def test_render_buyer_request_summary_escaping():
     assert "&amp;" in out
     assert "&lt;" in out
     assert "&gt;" in out
+
+
+def test_answers_to_project_fields_backward_compat():
+    """Old 6-key answers map to project fields as-is."""
+    answers = {
+        "title": "T",
+        "description": "D",
+        "stack": "S",
+        "link": "https://x.com",
+        "price": "P",
+        "contact": "C",
+    }
+    out = answers_to_project_fields(answers)
+    assert out["title"] == "T"
+    assert out["description"] == "D"
+    assert out["stack"] == "S"
+    assert out["link"] == "https://x.com"
+    assert out["price"] == "P"
+    assert out["contact"] == "C"
+
+
+def test_answers_to_project_fields_expanded():
+    """New SPEC keys compose title, description, stack, link, price, contact."""
+    answers = {
+        "title": "Foo",
+        "title_subtitle": "Bar",
+        "description_what": "What it does",
+        "description_audience": "For whom",
+        "stack": "Notion",
+        "stack_list": "Make",
+        "link": "https://a.com",
+        "link_demo": "https://b.com",
+        "price": "100",
+        "price_note": "Packages",
+        "contact": "@u",
+        "contact_extra": "email@x.com",
+    }
+    out = answers_to_project_fields(answers)
+    assert "Foo" in out["title"]
+    assert "Bar" in out["title"]
+    assert "What it does" in out["description"]
+    assert "For whom" in out["description"]
+    assert "Notion" in out["stack"]
+    assert "Make" in out["stack"]
+    assert "https://a.com" in out["link"]
+    assert "https://b.com" in out["link"]
+    assert "100" in out["price"]
+    assert "Packages" in out["price"]
+    assert "@u" in out["contact"]
+    assert "email@x.com" in out["contact"]

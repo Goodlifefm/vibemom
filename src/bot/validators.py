@@ -31,13 +31,39 @@ def validate_stack(text: str | None) -> tuple[bool, str | None]:
     return validate_non_empty(text, max_len=500)
 
 
-def validate_url(text: str | None) -> tuple[bool, str | None]:
+def validate_url(text: str | None, max_len: int | None = None) -> tuple[bool, str | None]:
     if text is None or not isinstance(text, str):
         return False, None
     t = text.strip()
     if not t:
         return False, None
     if not URL_PATTERN.match(t):
+        return False, None
+    if max_len is not None and len(t) > max_len:
+        return False, None
+    return True, t
+
+
+def validate_url_or_empty(text: str | None, max_len: int = 10000) -> tuple[bool, str | None]:
+    if text is None or not isinstance(text, str):
+        return False, None
+    t = text.strip()
+    if not t:
+        return True, ""
+    if len(t) > max_len:
+        return False, None
+    if not URL_PATTERN.match(t):
+        return False, None
+    return True, t
+
+
+def validate_max_len(text: str | None, max_len: int, allow_empty: bool = False) -> tuple[bool, str | None]:
+    if text is None or not isinstance(text, str):
+        return False, None
+    t = text.strip()
+    if not t:
+        return allow_empty, t if allow_empty else None
+    if len(t) > max_len:
         return False, None
     return True, t
 
