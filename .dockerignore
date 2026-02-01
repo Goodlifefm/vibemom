@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Env (compose passes via env_file)
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.cursor
+.vscode
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docs / misc
+README.md
+SPEC.md
+*.md
