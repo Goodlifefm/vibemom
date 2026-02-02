@@ -116,3 +116,11 @@ def test_fsm_path_preview_to_confirm_back_to_preview():
     assert transition(step, "next") == "confirm"
     step = get_step("confirm")
     assert transition(step, "back") == "preview"
+
+
+def test_fsm_path_skip_from_stack_other_to_link():
+    """Path: stack_other (skippable) -> skip -> link."""
+    step = get_step("stack_other")
+    assert step.get("skippable") is True
+    next_id = transition(step, "skip")
+    assert next_id == "link"

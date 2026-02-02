@@ -83,3 +83,43 @@ def test_validate_max_len():
     ok, val = validate_max_len("", 10, allow_empty=False)
     assert ok is False
     assert val is None
+
+
+def test_validate_url_each_link():
+    """Links: allow empty; if user enters, validate each (link collector)."""
+    from src.bot.validators import validate_url
+    urls = ["https://a.com", "https://b.com/path", "not-a-url", "http://ok.com"]
+    results = [validate_url(u) for u in urls]
+    assert results[0][0] is True and "a.com" in (results[0][1] or "")
+    assert results[1][0] is True
+    assert results[2][0] is False
+    assert results[3][0] is True
+
+
+def test_validate_time_spent_has_digit():
+    """time_spent must contain at least one digit."""
+    from src.bot.validators import validate_time_spent_has_digit
+    assert validate_time_spent_has_digit("2 weeks")[0] is True
+    assert validate_time_spent_has_digit("no digits")[0] is False
+    assert validate_time_spent_has_digit("")[0] is False
+
+
+def test_validate_email():
+    """Email regex validation."""
+    from src.bot.validators import validate_email
+    assert validate_email("user@example.com")[0] is True
+    assert validate_email("not-an-email")[0] is False
+    assert validate_email("")[0] is False
+
+
+def test_validate_int_optional_and_dev_cost_max():
+    """dev_cost_min/max: numeric and max >= min when both set."""
+    from src.bot.validators import validate_int_optional, validate_dev_cost_min_max
+    ok, n = validate_int_optional("50000")
+    assert ok is True and n == 50000
+    ok, n = validate_int_optional("")
+    assert ok is True and n is None
+    ok, n = validate_dev_cost_min_max("120000", existing_min=50000)
+    assert ok is True and n == 120000
+    ok, n = validate_dev_cost_min_max("10000", existing_min=50000)
+    assert ok is False

@@ -2,8 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Text, VARCHAR
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, Text, VARCHAR
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -18,6 +18,13 @@ class ProjectStatus(str, enum.Enum):
 class LeadType(str, enum.Enum):
     PROJECT_INTEREST = "PROJECT_INTEREST"
     REQUEST_OFFER = "REQUEST_OFFER"
+
+
+class AdminActionType(str, enum.Enum):
+    """V2: admin moderation action for audit log."""
+    approve = "approve"
+    needs_fix = "needs_fix"
+    reject = "reject"
 
 
 class Base(DeclarativeBase):
@@ -87,3 +94,40 @@ class Lead(Base):
 
     project: Mapped["Project"] = relationship("Project", back_populates="leads")
     buyer_request: Mapped["BuyerRequest | None"] = relationship("BuyerRequest", back_populates="leads")
+
+
+# --- V2 forward-compatible tables (Step 2). V1 does not use these. ---
+
+
+class Submission(Base):
+    """V2: submission lifecycle (draft → pending → needs_fix/approved/rejected). Links to user and optionally project."""
+    __tablename__ = "submission"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("project.id"), nullable=True)
+    status: Mapped[ProjectStatus] = mapped_column(
+        Enum(ProjectStatus), default=ProjectStatus.draft, nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    answers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    rendered_post: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_step: Mapped[str | None] = mapped_column(VARCHAR(50), nullable=True)
+    fix_request: Mapped[str | None] = mapped_column(Text, nullable=True)
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminAction(Base):
+    """V2: audit log of admin moderation actions (approve / needs_fix / reject)."""
+    __tablename__ = "admin_action"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=False)
+    target_project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("project.id"), nullable=True)
+    target_submission_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("submission.id"), nullable=True)
+    action: Mapped[AdminActionType] = mapped_column(Enum(AdminActionType), nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

@@ -277,7 +277,7 @@ ERROR_MODERATION_SEND = """
 """
 
 SAVE_DRAFT_OK = """
-Черновик сохранён. Нажми «Продолжить», чтобы вернуться к заполнению.
+💾 Сохранено. Продолжить можно командой /resume
 """
 
 BTN_SUBMIT_TO_MODERATION = """
@@ -286,6 +286,18 @@ BTN_SUBMIT_TO_MODERATION = """
 
 BTN_EDIT = """
 ✏️ Редактировать
+"""
+
+BTN_EDIT_ANSWERS = """
+✏️ Исправить ответы
+"""
+
+NEEDS_FIX_MESSAGE = """
+Проект отправлен на доработку. Внеси правки и отправь снова на модерацию.
+"""
+
+BTN_MAKE_EDIT = """
+✏️ Внести правки
 """
 
 BTN_YES_SEND = """
@@ -355,6 +367,127 @@ TEMPLATE_CONTACT_LABEL = "Контакт:"
 TEMPLATE_CLAIM = "Заявка:"
 TEMPLATE_BUDGET = "Бюджет:"
 
+# V2 scaffolding (Step 1: placeholder when V2_ENABLED=true, no real V2 logic yet)
+V2_PLACEHOLDER = "V2 (placeholder). Режим в разработке."
+
+# V2 FSM skeleton (Step 4: form steps + preview)
+V2_FORM_STEP1 = "📌 Название проекта (одной строкой)"
+V2_FORM_STEP2 = "📝 Краткое описание (что делает, для кого)"
+V2_FORM_STEP3 = "📬 Контакт (Telegram или email)"
+V2_PREVIEW_TITLE = "👀 Предпросмотр. Проверь и нажми «Отправить на модерацию»."
+V2_PREVIEW_POST = "👀 Предпросмотр поста..."
+V2_BTN_SKIP = "⏭️ Пропустить"
+V2_SAVE_BTN = "💾 Сохранить"
+V2_SAVED_RESUME = "💾 Сохранено. Продолжить можно командой /resume"
+V2_BTN_BACK = "⬅️ Назад"
+V2_FINISH_LINKS = "⏭️ Закончить со ссылками"
+V2_INVALID_REQUIRED = "Нужен ответ. Введи текст или нажми «Пропустить» (если доступно)."
+V2_INVALID_EMAIL = "Введи корректный email (например user@mail.ru)."
+V2_INVALID_LINK = "Ссылка должна начинаться с http:// или https://"
+V2_INVALID_TIME = "Укажи период или число (например 2 месяца, 40 часов)."
+V2_INVALID_COST = "Укажи сумму (число) или напиши «не раскрываю»."
+
+# V2 Cabinet & Editor
+V2_CABINET_GREETING = """
+👋 Привет.
+
+Это бот-витрина AI-проектов.
+Здесь ты можешь создавать, редактировать и публиковать проекты.
+"""
+
+V2_BTN_CREATE_PROJECT = "➕ Создать проект"
+V2_BTN_MY_PROJECTS = "📦 Мои проекты"
+V2_BTN_HOW_IT_WORKS = "ℹ️ Как это работает"
+
+V2_HOW_IT_WORKS = """
+Создай проект → заполни блоки (название, описание, стек, цена, контакт, ссылка) → предпросмотр → отправь на модерацию.
+Можешь в любой момент вернуться к редактированию.
+"""
+
+V2_MY_PROJECTS_HEADER = "📦 Мои проекты"
+V2_MY_PROJECTS_EMPTY = "У тебя пока нет проектов. Нажми «Создать проект»."
+V2_BTN_OPEN = "▶️ Открыть"
+
+V2_DASHBOARD_TITLE = "Проект: {title}"
+V2_DASHBOARD_STATUS = "Статус: {status}"
+V2_DASHBOARD_REVISION = "Редакция: {revision}"
+V2_BTN_EDIT_BLOCKS = "✍️ Редактировать блоки"
+V2_BTN_PREVIEW = "👀 Предпросмотр"
+V2_BTN_SEND_MODERATION = "🚀 Отправить на модерацию"
+V2_BTN_HISTORY = "🕓 История"
+V2_BTN_ARCHIVE = "🗑 Архивировать"
+V2_BTN_BACK_TO_PROJECTS = "⬅️ К проектам"
+
+V2_STATUS_DRAFT = "Черновик"
+V2_STATUS_PENDING = "На модерации"
+V2_STATUS_NEEDS_FIX = "На доработку"
+V2_STATUS_APPROVED = "Одобрен"
+V2_STATUS_REJECTED = "Отклонён"
+
+V2_ARCHIVED = "Проект архивирован."
+V2_SEND_MISSING_FIELDS = "Заполни обязательные поля: {fields}. Нажми «Редактировать блоки»."
+V2_SENT_TO_MODERATION = "Проект отправлен на модерацию."
+V2_SUBMIT_CONFIRM = "🚀 Заявка отправлена на модерацию.\nЕсли потребуется доработка — мы напишем.\nСпасибо, что навайбкодил 💪"
+V2_ADMIN_CHAT_MISSING = "Сейчас модерация недоступна. Попробуйте позже или напишите в поддержку."
+
+V2_EDITOR_BACK_TO_PROJECT = "⬅️ Назад к проекту"
+V2_EDITOR_BACK = "⬅️ Назад"
+V2_GUIDED_FILL_STEPS = "🚀 Заполнить по шагам"
+V2_EDITOR_MODE = "✍️ В редактор"
+V2_BTN_RESUME_PROJECT = "▶️ Продолжить редактирование"
+
+# V2 extended fields (reuse SUBMIT_* where possible)
+V2_AUTHOR_NAME = "Имя автора или команды"
+V2_AUTHOR_CONTACT_TYPE = "Тип контакта: telegram или email?"
+V2_AUTHOR_TELEGRAM = "Telegram (например: @username)"
+V2_AUTHOR_EMAIL = "Email (например: user@example.com)"
+V2_AUTHOR_ROLE = "Роль (например: разработчик, продакт)"
+V2_PROJECT_SUBTITLE = "Что это за проект (одной фразой)"
+V2_PROJECT_NICHE = "Ниша (по желанию)"
+V2_PRODUCT_WORKING_NOW = "Что уже сделано / в работе"
+V2_PRODUCT_STATUS = "Текущий статус продукта"
+V2_STACK_REASON = "Почему такой стек (по желанию)"
+V2_ECON_TIME_SPENT = "Сколько времени ушло (укажи период или число)"
+V2_ECON_DEV_COST_CURRENCY = "Валюта стоимости разработки: RUB, USD или HIDDEN"
+V2_ECON_DEV_COST_MIN = "Минимальная сумма (число)"
+V2_ECON_DEV_COST_MAX = "Максимальная сумма (число)"
+V2_ECON_POTENTIAL = "Потенциал монетизации (по желанию)"
+V2_GTM_STAGE = "Этап Go-to-market"
+V2_GTM_TRACTION = "Тракшн (кратко)"
+V2_GOAL_PUBLICATION = "Цель публикации"
+V2_GOAL_INBOUND_READY = "Готовность к inbound"
+V2_CHANNELS = "Каналы продвижения (выбери несколько или «Готово»)"
+V2_LINK_ADD = "Добавить ссылку"
+V2_LINK_FINISH = "Завершить список ссылок"
+V2_CHANNEL_TG = "Telegram"
+V2_CHANNEL_VK = "VK"
+V2_CHANNEL_SITE = "Сайт"
+V2_CHANNEL_DONE = "Готово"
+
+# V2 editor flow (guided / link collector)
+V2_SAVED_NEXT_FIELD = "Сохранено. Следующее поле:"
+V2_LINKS_SAVED_NEXT = "Список ссылок сохранён. Следующее поле:"
+V2_SKIPPED_NEXT = "Пропущено. Следующее поле:"
+V2_LINK_ADDED = "Ссылка добавлена."
+V2_SAVED = "Сохранено."
+V2_CHOOSE_CHANNELS_BUTTONS = "Выбери каналы кнопками выше и нажми «Готово»."
+V2_LINK_ADD_OR_FINISH = "Нажми «Добавить ссылку» и введи URL, или «Завершить список ссылок»."
+V2_LINKS_HEADER = "Ссылки:"
+V2_LINKS_EMPTY_HINT = "Пока нет ссылок. Добавьте или нажмите «Завершить список ссылок»."
+V2_LINK_ADD_PROMPT = "Введите URL ссылки. Или нажмите «Завершить список ссылок»."
+
+# V2 moderation (Step 6)
+V2_MOD_NO_RIGHTS = "Недостаточно прав."
+V2_MOD_ALREADY = "Уже обработано."
+V2_MOD_APPROVE_USER = "✅ Проект принят.\nМы сообщим, когда он выйдет в канале.\nСпасибо!"
+V2_MOD_NEEDS_FIX_USER = "🛠 Проект на доработке.\nНужно исправить:\n{fix_request}\nНажми кнопку ниже, чтобы внести правки."
+V2_MOD_REJECT_USER = "❌ Проект не подошёл под формат канала.\nПричина: {reason}\nМожно попробовать позже с другим кейсом."
+V2_MOD_ASK_FIX = "Введите текст доработки для автора:"
+V2_MOD_ASK_REJECT = "Причина отклонения (или отправьте пустое сообщение — будет «без комментариев»):"
+V2_MOD_APPROVED_LABEL = "Одобрено."
+V2_MOD_NEEDS_FIX_LABEL = "На доработку."
+V2_MOD_REJECTED_LABEL = "Отклонено."
+
 COPY_IDS = [
     "START_MESSAGE",
     "SUBMIT_START",
@@ -410,6 +543,9 @@ COPY_IDS = [
     "SAVE_DRAFT_OK",
     "BTN_SUBMIT_TO_MODERATION",
     "BTN_EDIT",
+    "BTN_EDIT_ANSWERS",
+    "NEEDS_FIX_MESSAGE",
+    "BTN_MAKE_EDIT",
     "BTN_YES_SEND",
     "BTN_NO_RETURN",
     "BTN_RESUME",
@@ -435,6 +571,100 @@ COPY_IDS = [
     "TEMPLATE_CONTACT_LABEL",
     "TEMPLATE_CLAIM",
     "TEMPLATE_BUDGET",
+    "V2_PLACEHOLDER",
+    "V2_FORM_STEP1",
+    "V2_FORM_STEP2",
+    "V2_FORM_STEP3",
+    "V2_PREVIEW_TITLE",
+    "V2_PREVIEW_POST",
+    "V2_BTN_SKIP",
+    "V2_SAVE_BTN",
+    "V2_SAVED_RESUME",
+    "V2_BTN_BACK",
+    "V2_FINISH_LINKS",
+    "V2_INVALID_REQUIRED",
+    "V2_INVALID_EMAIL",
+    "V2_INVALID_LINK",
+    "V2_INVALID_TIME",
+    "V2_INVALID_COST",
+    "V2_CABINET_GREETING",
+    "V2_BTN_CREATE_PROJECT",
+    "V2_BTN_MY_PROJECTS",
+    "V2_BTN_HOW_IT_WORKS",
+    "V2_HOW_IT_WORKS",
+    "V2_MY_PROJECTS_HEADER",
+    "V2_MY_PROJECTS_EMPTY",
+    "V2_BTN_OPEN",
+    "V2_DASHBOARD_TITLE",
+    "V2_DASHBOARD_STATUS",
+    "V2_DASHBOARD_REVISION",
+    "V2_BTN_EDIT_BLOCKS",
+    "V2_BTN_PREVIEW",
+    "V2_BTN_SEND_MODERATION",
+    "V2_BTN_HISTORY",
+    "V2_BTN_ARCHIVE",
+    "V2_BTN_BACK_TO_PROJECTS",
+    "V2_STATUS_DRAFT",
+    "V2_STATUS_PENDING",
+    "V2_STATUS_NEEDS_FIX",
+    "V2_STATUS_APPROVED",
+    "V2_STATUS_REJECTED",
+    "V2_ARCHIVED",
+    "V2_SEND_MISSING_FIELDS",
+    "V2_SENT_TO_MODERATION",
+    "V2_SUBMIT_CONFIRM",
+    "V2_ADMIN_CHAT_MISSING",
+    "V2_EDITOR_BACK_TO_PROJECT",
+    "V2_EDITOR_BACK",
+    "V2_GUIDED_FILL_STEPS",
+    "V2_EDITOR_MODE",
+    "V2_BTN_RESUME_PROJECT",
+    "V2_AUTHOR_NAME",
+    "V2_AUTHOR_CONTACT_TYPE",
+    "V2_AUTHOR_TELEGRAM",
+    "V2_AUTHOR_EMAIL",
+    "V2_AUTHOR_ROLE",
+    "V2_PROJECT_SUBTITLE",
+    "V2_PROJECT_NICHE",
+    "V2_PRODUCT_WORKING_NOW",
+    "V2_PRODUCT_STATUS",
+    "V2_STACK_REASON",
+    "V2_ECON_TIME_SPENT",
+    "V2_ECON_DEV_COST_CURRENCY",
+    "V2_ECON_DEV_COST_MIN",
+    "V2_ECON_DEV_COST_MAX",
+    "V2_ECON_POTENTIAL",
+    "V2_GTM_STAGE",
+    "V2_GTM_TRACTION",
+    "V2_GOAL_PUBLICATION",
+    "V2_GOAL_INBOUND_READY",
+    "V2_CHANNELS",
+    "V2_LINK_ADD",
+    "V2_LINK_FINISH",
+    "V2_CHANNEL_TG",
+    "V2_CHANNEL_VK",
+    "V2_CHANNEL_SITE",
+    "V2_CHANNEL_DONE",
+    "V2_SAVED_NEXT_FIELD",
+    "V2_LINKS_SAVED_NEXT",
+    "V2_SKIPPED_NEXT",
+    "V2_LINK_ADDED",
+    "V2_SAVED",
+    "V2_CHOOSE_CHANNELS_BUTTONS",
+    "V2_LINK_ADD_OR_FINISH",
+    "V2_LINKS_HEADER",
+    "V2_LINKS_EMPTY_HINT",
+    "V2_LINK_ADD_PROMPT",
+    "V2_MOD_NO_RIGHTS",
+    "V2_MOD_ALREADY",
+    "V2_MOD_APPROVE_USER",
+    "V2_MOD_NEEDS_FIX_USER",
+    "V2_MOD_REJECT_USER",
+    "V2_MOD_ASK_FIX",
+    "V2_MOD_ASK_REJECT",
+    "V2_MOD_APPROVED_LABEL",
+    "V2_MOD_NEEDS_FIX_LABEL",
+    "V2_MOD_REJECTED_LABEL",
 ]
 
 

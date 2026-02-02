@@ -1,0 +1,150 @@
+"""V2 repo: submission lifecycle (draft → pending → needs_fix/approved/rejected)."""
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from src.bot.database import session as db_session
+from src.bot.database.models import ProjectStatus, Submission
+
+
+async def get_submission(submission_id: uuid.UUID) -> Submission | None:
+    """Load submission by id (for form/preview)."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(select(Submission).where(Submission.id == submission_id))
+        return r.scalar_one_or_none()
+
+
+async def get_active_submission(user_id: int) -> Submission | None:
+    """Latest submission for user in draft or needs_fix (editable). user_id = User.id (PK)."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(
+            select(Submission)
+            .where(Submission.user_id == user_id)
+            .where(Submission.status.in_([ProjectStatus.draft, ProjectStatus.needs_fix]))
+            .order_by(Submission.updated_at.desc())
+            .limit(1)
+        )
+        return r.scalar_one_or_none()
+
+
+async def list_submissions_by_user(user_id: int, limit: int = 5) -> list[Submission]:
+    """Last N submissions by user (any status). For V2 cabinet «My projects»."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(
+            select(Submission)
+            .where(Submission.user_id == user_id)
+            .order_by(Submission.updated_at.desc())
+            .limit(limit)
+        )
+        return list(r.scalars().all())
+
+
+async def create_submission(
+    user_id: int,
+    project_id: uuid.UUID | None = None,
+    current_step: str | None = "q1",
+) -> Submission:
+    """Create draft submission. user_id = User.id (PK). current_step for resume."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        sub = Submission(
+            user_id=user_id,
+            project_id=project_id,
+            status=ProjectStatus.draft,
+            revision=0,
+            answers=None,
+            current_step=current_step,
+        )
+        session.add(sub)
+        await session.commit()
+        await session.refresh(sub)
+        return sub
+
+
+async def update_answers_step(
+    submission_id: uuid.UUID,
+    answers: dict,
+    current_step: str | None = None,
+) -> Submission | None:
+    """Merge answers into submission.answers; optionally set current_step. Persist after each step."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(select(Submission).where(Submission.id == submission_id))
+        sub = r.scalar_one_or_none()
+        if not sub:
+            return None
+        current = dict(sub.answers) if sub.answers else {}
+        current.update(answers)
+        sub.answers = current
+        if current_step is not None:
+            sub.current_step = current_step
+        await session.commit()
+        await session.refresh(sub)
+        return sub
+
+
+async def set_status(submission_id: uuid.UUID, status: ProjectStatus) -> Submission | None:
+    """Set submission status; set submitted_at when status becomes pending."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(select(Submission).where(Submission.id == submission_id))
+        sub = r.scalar_one_or_none()
+        if not sub:
+            return None
+        sub.status = status
+        if status == ProjectStatus.pending:
+            sub.submitted_at = datetime.now(timezone.utc)
+        await session.commit()
+        await session.refresh(sub)
+        return sub
+
+
+async def set_moderated(
+    submission_id: uuid.UUID,
+    status: ProjectStatus,
+    fix_request: str | None = None,
+) -> Submission | None:
+    """Set status and moderated_at; optionally set fix_request. For approve/needs_fix/reject."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(select(Submission).where(Submission.id == submission_id))
+        sub = r.scalar_one_or_none()
+        if not sub:
+            return None
+        sub.status = status
+        sub.moderated_at = datetime.now(timezone.utc)
+        if fix_request is not None:
+            sub.fix_request = fix_request
+        await session.commit()
+        await session.refresh(sub)
+        return sub
+
+
+async def submit_for_moderation(submission_id: uuid.UUID, rendered_post: str) -> Submission | None:
+    """Persist rendered_post, set status=pending, submitted_at=now(), revision += 1 (Option A)."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(select(Submission).where(Submission.id == submission_id))
+        sub = r.scalar_one_or_none()
+        if not sub:
+            return None
+        sub.rendered_post = rendered_post
+        sub.status = ProjectStatus.pending
+        sub.submitted_at = datetime.now(timezone.utc)
+        sub.revision = (sub.revision or 0) + 1
+        sub.fix_request = None
+        await session.commit()
+        await session.refresh(sub)
+        return sub

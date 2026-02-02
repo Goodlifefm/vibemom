@@ -11,3 +11,9 @@ class BuyerRequestStates(StatesGroup):
     budget = State()
     contact = State()
     confirm = State()
+
+
+class EditorStates(StatesGroup):
+    """V2 block editor: block menu and field edit."""
+    block_menu = State()
+    field_edit = State()

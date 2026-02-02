@@ -32,11 +32,11 @@ def ps_nav_step(*, back: bool = True, next_: bool = True, save: bool = True, ski
 
 
 def ps_preview_kb() -> InlineKeyboardMarkup:
-    """Preview: Submit to mod, Edit, Back. callback_data: ps:submit, ps:edit, ps:back."""
+    """Preview: Submit to mod, Edit answers, Back. callback_data: ps:submit, ps:edit, ps:back."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text=get_copy("BTN_SUBMIT_TO_MODERATION").strip(), callback_data=f"{PS}:submit"),
-            InlineKeyboardButton(text=get_copy("BTN_EDIT").strip(), callback_data=f"{PS}:edit"),
+            InlineKeyboardButton(text=get_copy("BTN_EDIT_ANSWERS").strip(), callback_data=f"{PS}:edit"),
         ],
         [InlineKeyboardButton(text=get_copy("BACK_BUTTON").strip(), callback_data=f"{PS}:back")],
     ])

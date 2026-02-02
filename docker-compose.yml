@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: vibe_market
     ports:
       - "5432:5432"
@@ -20,8 +20,20 @@ services:
         condition: service_healthy
     environment:
       BOT_TOKEN: ${BOT_TOKEN:-}
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/vibe_market
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/vibe_market
+      ADMIN_IDS: ${ADMIN_IDS:-}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+      ADMIN_CHAT_ID: ${ADMIN_CHAT_ID:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      V2_ENABLED: ${V2_ENABLED:-false}
+      V2_CANARY_MODE: ${V2_CANARY_MODE:-false}
+      V2_ALLOWLIST: ${V2_ALLOWLIST:-}
     env_file:
       - .env
     command: sh -c "alembic upgrade head && python main.py"
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.bot.health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

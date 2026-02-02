@@ -124,3 +124,23 @@ def step_index(state_id: str) -> int:
         if s["state_id"] == state_id:
             return i
     return -1
+
+
+def get_project_submission_schema(v2_enabled: bool) -> Any:
+    """Return schema object for submission FSM. When v2_enabled=True uses V2 (25+ steps, new keys)."""
+    if v2_enabled:
+        from src.bot import project_submission_schema_v2 as v2
+        return type("Schema", (), {
+            "STEPS": v2.STEPS,
+            "first_step": v2.first_step,
+            "get_step": v2.get_step,
+            "step_index": v2.step_index,
+            "VALIDATORS": v2.VALIDATORS,
+        })()
+    return type("Schema", (), {
+        "STEPS": STEPS,
+        "first_step": first_step,
+        "get_step": get_step,
+        "step_index": step_index,
+        "VALIDATORS": VALIDATORS,
+    })()

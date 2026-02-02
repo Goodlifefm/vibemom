@@ -13,9 +13,26 @@ class Settings(BaseSettings):
         return v.strip() if isinstance(v, str) else v
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/vibe_market"
     admin_telegram_ids: str = ""
+    admin_ids: str = ""  # preferred over admin_telegram_ids (backward compat)
     admin_chat_id: str = ""
+    v2_enabled: bool = False
+    v2_canary_mode: bool = False
+    v2_allowlist: str = ""
 
     def get_admin_ids(self) -> set[int]:
-        if not self.admin_telegram_ids:
+        raw = (self.admin_ids or self.admin_telegram_ids) or ""
+        if not raw:
             return set()
-        return {int(x.strip()) for x in self.admin_telegram_ids.split(",") if x.strip()}
+        return {int(x.strip()) for x in raw.split(",") if x.strip()}
+
+    def get_v2_allowlist_ids(self) -> set[int]:
+        if not self.v2_allowlist:
+            return set()
+        return {int(x.strip()) for x in self.v2_allowlist.split(",") if x.strip()}
+
+    def should_use_v2(self, telegram_id: int) -> bool:
+        if not self.v2_enabled:
+            return False
+        if not self.v2_canary_mode:
+            return True
+        return telegram_id in self.get_admin_ids() or telegram_id in self.get_v2_allowlist_ids()
