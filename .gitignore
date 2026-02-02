@@ -10,3 +10,25 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# junk artifacts accidentally created
+CACHED
+[internal]
+exporting
+naming
+reading
+resolve
+resolving
+transferring
+unpacking
+
+# junk artifacts accidentally created
+CACHED
+[internal]
+exporting
+naming
+reading
+resolve
+resolving
+transferring
+unpacking
