@@ -111,3 +111,78 @@ def render_submission_to_html(answers: dict | None) -> str:
     """
     blocks = submission_answers_to_blocks(answers)
     return render_project_post_html(blocks)
+
+
+def project_to_feed_answers(project: Any) -> dict:
+    """
+    V1 Project (title, description, stack, link, price, contact) → dict for render_for_feed.
+    Duck-typed: any object with these attributes works.
+    """
+    return {
+        "title": getattr(project, "title", None) or "",
+        "description": getattr(project, "description", None) or "",
+        "contact": getattr(project, "contact", None) or "",
+        "author_contact": getattr(project, "contact", None) or "",
+        "link": getattr(project, "link", None) or "",
+        "links": [getattr(project, "link", None)] if getattr(project, "link", None) else [],
+        "price": getattr(project, "price", None) or "",
+        "cost": "",
+        "cost_max": "",
+        "currency": "",
+        "niche": "",
+        "stack": getattr(project, "stack", None) or "",
+    }
+
+
+def render_for_feed(answers: dict | None) -> str:
+    """
+    Post for channel feed: title, 1–2 lines description (~500 chars), contact, price, link, hashtags.
+    Safe HTML for Telegram parse_mode=HTML.
+    Accepts V2 answers dict or dict from project_to_feed_answers(V1 Project).
+    """
+    if not answers:
+        answers = {}
+    title = _escape(answers.get("title") or "").strip() or "—"
+    desc = _escape(answers.get("description") or "").strip() or "—"
+    contact = _escape(answers.get("author_contact") or answers.get("contact") or "").strip() or "—"
+    cost = str(answers.get("cost") or "").strip()
+    cost_max = str(answers.get("cost_max") or "").strip()
+    currency = str(answers.get("currency") or "").strip()
+    price_single = str(answers.get("price") or "").strip()
+    if cost or cost_max or currency:
+        if currency:
+            price = f"{cost} – {cost_max} {currency}".strip(" –") if (cost or cost_max) else "—"
+        else:
+            price = f"{cost} – {cost_max}".strip(" –") or "—"
+    else:
+        price = _escape(price_single) if price_single else "—"
+    links = answers.get("links")
+    if isinstance(links, list) and links:
+        link = next((str(x).strip() for x in links if x and str(x).strip()), "")
+    else:
+        link = (answers.get("link") or "").strip() if answers.get("link") else ""
+    link = _escape(link) if link else ""
+    niche = _escape(answers.get("niche") or "").strip()
+    stack = answers.get("stack_reason") or answers.get("stack") or ""
+    stack = str(stack).strip() if stack else ""
+    tags = []
+    if niche:
+        tags.append("#" + niche.replace(" ", "_").replace(",", "_")[:30])
+    if stack:
+        for part in stack.split(",")[:3]:
+            t = part.strip()[:20].replace(" ", "_")
+            if t:
+                tags.append("#" + t)
+    hashtags = " ".join(tags) if tags else ""
+
+    lines = [
+        f"<b>{title}</b>",
+        "",
+        desc[:500] + ("…" if len(desc) > 500 else ""),
+        "",
+        f"<b>Контакт:</b> {contact}",
+        f"<b>Цена:</b> {price}" if price != "—" else None,
+        link if link else None,
+        hashtags if hashtags else None,
+    ]
+    return "\n".join(x for x in lines if x is not None)

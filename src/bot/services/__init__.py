@@ -1,6 +1,7 @@
 from src.bot.services.user_service import get_or_create_user
 from src.bot.services.project_service import (
     create_project,
+    get_project,
     list_approved_projects,
     list_pending_projects,
     update_project_status,
@@ -12,6 +13,7 @@ from src.bot.services.matching_service import match_request_to_projects
 __all__ = [
     "get_or_create_user",
     "create_project",
+    "get_project",
     "list_approved_projects",
     "list_pending_projects",
     "update_project_status",

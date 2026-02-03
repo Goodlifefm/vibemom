@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     admin_telegram_ids: str = ""
     admin_ids: str = ""  # preferred over admin_telegram_ids (backward compat)
     admin_chat_id: str = ""
+    feed_chat_id: str = ""  # FEED_CHAT_ID: канал для автопубликации одобренных проектов (@vibecode777 или id)
     v2_enabled: bool = False
     v2_canary_mode: bool = False
     v2_allowlist: str = ""

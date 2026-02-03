@@ -35,12 +35,23 @@
 - V1 submit flow (submit.py) and FSM; it remains available when `V2_ENABLED=false` or as legacy path.
 - Existing renderer (`render_project_post`, `answers_to_project_fields`) and validators.
 
+## Autopublish to feed channel (V2.1)
+
+После одобрения проекта модератором (approve) пост автоматически публикуется в канал, заданный в `FEED_CHAT_ID` (например `@vibecode777` или числовой id канала). Работает и для V1 (callback `mod_approve_{project_id}` в admin.py), и для V2 (callback `v2mod:approve:{submission_id}` в moderation.py).
+
+- **Конфиг:** в `.env` одна переменная `FEED_CHAT_ID` — одно значение: `@vibecode777` или числовой id (`-100...`). Если не задан — публикация не выполняется, в лог пишется warning.
+- **Формат поста:** заголовок, описание (~500 символов), контакт, цена, ссылка, хештеги по нише/стеку. Рендер: `src/v2/rendering/project_renderer.py` → `render_for_feed(answers)` или `render_for_feed(project_to_feed_answers(project))` для V1.
+- **Логирование:** при успехе — `FEED publish ok project_id=... chat=... msg_id=...`; при ошибке — `logger.exception` и краткое уведомление админу в `ADMIN_CHAT_ID` (нет прав, чат не найден и т.п.).
+- **Права:** бот должен быть админом канала с правом публикации сообщений.
+- **Тест:** `python scripts/test_feed.py` — отправить тестовое сообщение в канал; `python scripts/test_feed.py --dry-run` — только проверить, что `FEED_CHAT_ID` задан.
+
 ## How to run V2
 
 Set in `.env`:
 
 ```env
 V2_ENABLED=true
+FEED_CHAT_ID=@vibecode777
 ```
 
-Restart bot. `/start` opens Cabinet; Create project → Dashboard → Edit blocks → edit fields → Preview → Send to moderation. Admin flow unchanged.
+Restart bot. `/start` opens Cabinet; Create project → fill form (with step progress and hints) → Preview → Send to moderation. After admin approves, the project is auto-published to the feed channel. Admin flow unchanged.

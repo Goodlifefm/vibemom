@@ -24,6 +24,7 @@ services:
       ADMIN_IDS: ${ADMIN_IDS:-}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
       ADMIN_CHAT_ID: ${ADMIN_CHAT_ID:-}
+      FEED_CHAT_ID: ${FEED_CHAT_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       V2_ENABLED: ${V2_ENABLED:-false}
       V2_CANARY_MODE: ${V2_CANARY_MODE:-false}

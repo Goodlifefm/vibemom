@@ -108,7 +108,9 @@ python scripts/audit_copy.py
 
 ## Переменные окружения
 
-Обязательные: `BOT_TOKEN`, `DATABASE_URL`. Остальные опциональны. Полный список в `.env.example`: `BOT_TOKEN`, `DATABASE_URL`, `ADMIN_CHAT_ID`, `ADMIN_IDS`, `LOG_LEVEL`, `V2_ENABLED`, `V2_CANARY_MODE`, `V2_ALLOWLIST`. Поддерживается и `ADMIN_TELEGRAM_IDS` (если `ADMIN_IDS` не задан).
+Обязательные: `BOT_TOKEN`, `DATABASE_URL`. Остальные опциональны. Полный список в `.env.example`: `BOT_TOKEN`, `DATABASE_URL`, `ADMIN_CHAT_ID`, `FEED_CHAT_ID`, `ADMIN_IDS`, `LOG_LEVEL`, `V2_ENABLED`, `V2_CANARY_MODE`, `V2_ALLOWLIST`. Поддерживается и `ADMIN_TELEGRAM_IDS` (если `ADMIN_IDS` не задан).
+
+**Автопостинг в канал:** задайте в `.env` одну переменную `FEED_CHAT_ID` — канал для публикации после approve (V1 и V2). Значение: `@vibecode777` или числовой id канала (`-100...`). Если не задан — после approve пост в канал не отправляется (в лог пишется warning). Тест публикации: `python scripts/test_feed.py` (без `--dry-run` отправит тестовое сообщение); `python scripts/test_feed.py --dry-run` — только проверка конфига.
 
 ## Жизненный цикл статусов (V2)
 
@@ -123,6 +125,53 @@ DRAFT → SUBMITTED (pending) → NEEDS_FIX → повторная подача 
 - Если `V2_ENABLED=false` — все пользователи идут в V1.
 - Если `V2_ENABLED=true` и `V2_CANARY_MODE=false` — все идут в V2.
 - Если `V2_ENABLED=true` и `V2_CANARY_MODE=true` — V2 только для `ADMIN_IDS` или для tg_id из `V2_ALLOWLIST`; остальные остаются на V1.
+
+## Deployment
+
+Автодеплой на VPS при пуше в `main` или `master`: GitHub Actions по SSH заходит на сервер, обновляет код в `/root/vibemom`, пересобирает и перезапускает контейнеры (`docker compose up -d --build`).
+
+### GitHub Secrets
+
+В репозитории: **Settings → Secrets and variables → Actions** добавьте:
+
+| Secret        | Описание |
+|---------------|----------|
+| `VPS_HOST`    | IP или hostname VPS (например `89.191.226.233`) |
+| `VPS_USER`    | SSH-пользователь (например `root`) |
+| `VPS_SSH_KEY` | Приватный SSH-ключ целиком (включая `-----BEGIN ... KEY-----` и `-----END ... KEY-----`) |
+| `VPS_PORT`    | (опционально) Порт SSH, по умолчанию 22 |
+
+### Генерация SSH-ключа (ed25519)
+
+На своей машине:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/vibemom_deploy -N ""
+```
+
+- Приватный ключ: `~/.ssh/vibemom_deploy` — содержимое целиком скопировать в секрет `VPS_SSH_KEY`.
+- Публичный ключ: `~/.ssh/vibemom_deploy.pub` — добавить на VPS.
+
+### Добавление публичного ключа на VPS
+
+На VPS под пользователем, которым заходит Actions (например `root`):
+
+```bash
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+echo "СОДЕРЖИМОЕ_ФАЙЛА_vibemom_deploy.pub" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Или скопировать ключ вручную: `cat ~/.ssh/vibemom_deploy.pub` на локальной машине и вставить одну строку в `~/.ssh/authorized_keys` на VPS.
+
+### Проверка
+
+1. **Ручной запуск:** в GitHub: **Actions → Deploy to VPS → Run workflow** (кнопка Run workflow).
+2. **По пушу:** сделайте push (или merge) в ветку `main` или `master` — workflow запустится автоматически.
+3. В логах job должны быть: `git fetch`, `docker compose up -d --build`, `docker compose ps`, последние 120 строк логов сервиса `bot`.
+
+Если основная ветка у вас не `main` и не `master`, в файле `.github/workflows/deploy.yml` измените строку `branches: [main, master]` на нужную ветку (например `branches: [production]`).
 
 ## Спецификация
 

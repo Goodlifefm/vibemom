@@ -6,10 +6,11 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest, TelegramNotFound
 
 from src.bot.config import Settings
 from src.bot.messages import get_copy
-from src.bot.database.models import ProjectStatus, AdminActionType
+from src.bot.database.models import ProjectStatus, AdminActionType, Submission
 from src.v2.repo import (
     get_submission,
     get_user_by_id,
@@ -18,6 +19,7 @@ from src.v2.repo import (
     log_admin_action,
 )
 from src.v2.fsm.states import V2ModSteps
+from src.v2.rendering import render_for_feed
 
 router = Router()
 PREFIX = "v2mod"
@@ -89,6 +91,44 @@ async def handle_mod_callback(callback: CallbackQuery, state: FSMContext) -> Non
             return
         await set_moderated(sub_id, ProjectStatus.approved)
         await log_admin_action(admin_user.id, AdminActionType.approve, target_submission_id=sub_id)
+        feed_chat_id = (Settings().feed_chat_id or "").strip()
+        if not feed_chat_id:
+            logger.warning("FEED_CHAT_ID not set; skipping auto-publish for project_id=%s", sub_id)
+        else:
+            try:
+                rendered_post = render_for_feed(sub.answers)
+                sent = await callback.bot.send_message(
+                    chat_id=feed_chat_id,
+                    text=rendered_post,
+                    parse_mode="HTML",
+                    disable_web_page_preview=False,
+                )
+                logger.info(
+                    "FEED publish ok project_id=%s chat=%s msg_id=%s",
+                    sub_id,
+                    feed_chat_id,
+                    sent.message_id,
+                )
+            except (TelegramForbiddenError, TelegramBadRequest, TelegramNotFound) as e:
+                logger.exception("FEED publish failed project_id=%s chat=%s", sub_id, feed_chat_id)
+                if admin_chat_id:
+                    try:
+                        await callback.bot.send_message(
+                            chat_id=admin_chat_id,
+                            text=f"⚠️ Ошибка публикации в канал: {feed_chat_id}\nproject_id={sub_id}\n{type(e).__name__}: {e}",
+                        )
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.exception("FEED publish failed project_id=%s chat=%s", sub_id, feed_chat_id)
+                if admin_chat_id:
+                    try:
+                        await callback.bot.send_message(
+                            chat_id=admin_chat_id,
+                            text=f"⚠️ Ошибка публикации в канал: {feed_chat_id}\nproject_id={sub_id}\n{type(e).__name__}: {e}",
+                        )
+                    except Exception:
+                        pass
         user_text = get_copy("V2_MOD_APPROVE_USER")
         author = await get_user_by_id(sub.user_id)
         if author:
