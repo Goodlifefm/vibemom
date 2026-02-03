@@ -1,10 +1,9 @@
-# Auto-deploy to VPS on push to v2-editor.
-# Repo: git@github.com:GoodLifeFM/vibemom.git — на VPS в /root/vibemom
 name: Deploy to VPS (v2-editor)
 
 on:
   push:
-    branches: [v2-editor]
+    branches:
+      - v2-editor
 
 concurrency:
   group: deploy-vps-v2-editor
@@ -13,29 +12,40 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          command_options: "-o StrictHostKeyChecking=no"
-          script_stop: true
-        script: |
-          set -e
-          command -v docker >/dev/null || { echo "Error: docker not found on VPS. Install Docker first."; exit 1; }
-          docker compose version >/dev/null || { echo "Error: docker compose not found on VPS. Install Docker Compose (v2) first."; exit 1; }
-          cd /root/vibemom
-          git fetch --all
-          git checkout v2-editor
-          git pull --ff-only origin v2-editor
-          docker compose pull || true
-          docker compose up -d --build
-          docker image prune -f
-          docker compose ps
-          docker compose logs --tail=80 bot
+          script: |
+            set -e
+
+            echo "== Docker check =="
+            command -v docker
+            docker compose version || docker-compose version
+
+            echo "== Go to project =="
+            cd /root/vibemom
+
+            echo "== Update code =="
+            git fetch --all
+            git checkout v2-editor
+            git pull --ff-only origin v2-editor
+
+            echo "== Build & run =="
+            docker compose pull || true
+            docker compose up -d --build
+
+            echo "== Cleanup =="
+            docker image prune -f
+
+            echo "== Status =="
+            docker compose ps
+            docker compose logs --tail=50 bot
