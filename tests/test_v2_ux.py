@@ -74,3 +74,55 @@ def test_parse_copy_to_parts():
     assert "Пояснение" in (parts["intro"] or "")
     assert parts["example"] == "значение"
     assert parts["todo"] is None
+
+
+# ---- Button / callback routing (invariants) ----
+def test_callback_prefixes_single_source():
+    """Key callback_data prefixes used by V2 routers (v2form, v2preview, v2menu, v2mod)."""
+    from src.v2.routers.form import PREFIX as FORM_PREFIX
+    from src.v2.routers.preview import PREFIX as PREVIEW_PREFIX
+    from src.bot.keyboards import MENU_PREFIX
+    from src.v2.routers.moderation import PREFIX as MOD_PREFIX
+    assert FORM_PREFIX == "v2form"
+    assert PREVIEW_PREFIX == "v2preview"
+    assert MENU_PREFIX == "v2menu"
+    assert MOD_PREFIX == "v2mod"
+
+
+def test_submit_no_returns_to_preview():
+    """Submit No must not end flow: handler calls show_preview (return to Preview)."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.v2.routers.preview import cb_submit_no
+
+    callback = MagicMock()
+    callback.answer = AsyncMock()
+    callback.message = MagicMock()
+    state = MagicMock()
+    state.get_data = AsyncMock(return_value={"submission_id": "00000000-0000-0000-0000-000000000001", "current_step_key": "preview"})
+
+    async def run():
+        with patch("src.v2.routers.preview.show_preview", new_callable=AsyncMock) as show_preview:
+            await cb_submit_no(callback, state)
+            show_preview.assert_called_once_with(callback.message, state)
+
+    asyncio.run(run())
+
+
+def test_menu_handler_shows_cabinet():
+    """Menu trigger (any state) must show cabinet; handler calls show_menu_cabinet."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.v2.routers.menu import handle_menu_trigger
+
+    message = MagicMock()
+    message.from_user = MagicMock(id=123)
+    state = MagicMock()
+    state.get_data = AsyncMock(return_value={})
+
+    async def run():
+        with patch("src.v2.routers.menu.show_menu_cabinet", new_callable=AsyncMock) as show_cabinet:
+            await handle_menu_trigger(message, state)
+            show_cabinet.assert_called_once_with(message, state)
+
+    asyncio.run(run())

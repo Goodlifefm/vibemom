@@ -1,4 +1,5 @@
 """V2 form: generic handlers from step registry. Persist after each step; back/skip/save/resume."""
+import logging
 import uuid
 
 from aiogram import Router, F
@@ -23,9 +24,15 @@ from src.v2.validators import validate
 
 router = Router()
 PREFIX = "v2form"
+logger = logging.getLogger(__name__)
 
 DATA_SUBMISSION_ID = "submission_id"
 DATA_STEP_KEY = "current_step_key"
+
+
+def _log_button(callback: CallbackQuery, data: dict, action: str) -> None:
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("button user_id=%s submission_id=%s step_id=%s action=%s", user_id, data.get(DATA_SUBMISSION_ID), data.get(DATA_STEP_KEY), action)
 
 
 def _form_kb(step_key: str) -> InlineKeyboardMarkup:
@@ -127,6 +134,7 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
 async def handle_back(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
+    _log_button(callback, data, "back")
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
     if not sid:
@@ -151,6 +159,7 @@ async def handle_back(callback: CallbackQuery, state: FSMContext) -> None:
 async def handle_skip(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
+    _log_button(callback, data, "skip")
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
     if not sid or not step_key:
@@ -183,10 +192,13 @@ async def handle_skip(callback: CallbackQuery, state: FSMContext) -> None:
 async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
+    _log_button(callback, data, "save")
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
     if not sid:
         await callback.message.answer(get_copy("V2_SAVED_RESUME"))
+        from src.v2.routers.menu import show_menu_cabinet
+        await show_menu_cabinet(callback.message, state)
         return
     try:
         sub_id = uuid.UUID(sid)
@@ -194,6 +206,8 @@ async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await update_answers_step(sub_id, {}, current_step=step_key)
     await callback.message.answer(get_copy("V2_SAVED_RESUME"))
+    from src.v2.routers.menu import show_menu_cabinet
+    await show_menu_cabinet(callback.message, state)
 
 
 # ---- Finish links (Q21) ----

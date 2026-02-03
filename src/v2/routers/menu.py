@@ -100,7 +100,7 @@ async def show_menu_cabinet(message_or_callback: Message | CallbackQuery, state:
 @router.message(F.text.in_(["🏠 Меню", "Меню"]))
 @router.message(Command("menu"))
 async def handle_menu_trigger(message: Message, state: FSMContext) -> None:
-    """Global: show menu from any state."""
+    """Global escape hatch: show cabinet from any state. Keeps draft (submission_id) so Continue works."""
     await show_menu_cabinet(message, state)
 
 

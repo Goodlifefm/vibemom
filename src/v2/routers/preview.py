@@ -36,6 +36,15 @@ def _preview_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=get_copy("BTN_SUBMIT_TO_MODERATION").strip(), callback_data=f"{PREFIX}:submit")],
         [InlineKeyboardButton(text=get_copy("BTN_EDIT_ANSWERS").strip(), callback_data=f"{PREFIX}:back")],
+        [InlineKeyboardButton(text=get_copy("V2_MENU_BTN").strip(), callback_data=f"{PREFIX}:menu")],
+    ])
+
+
+def _preview_confirm_kb() -> InlineKeyboardMarkup:
+    """Yes/No for submit confirmation. No -> back to Preview."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=get_copy("BTN_YES_SEND").strip(), callback_data=f"{PREFIX}:submit_yes")],
+        [InlineKeyboardButton(text=get_copy("BTN_NO_RETURN").strip(), callback_data=f"{PREFIX}:submit_no")],
     ])
 
 
@@ -62,11 +71,43 @@ async def show_preview(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == f"{PREFIX}:submit")
 async def cb_submit(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show submit confirmation (Yes/No). Submit_yes does send; submit_no returns to Preview."""
     await callback.answer()
     data = await state.get_data()
     sid = data.get("submission_id")
+    step_key = data.get("current_step_key") or "preview"
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("button user_id=%s submission_id=%s step_id=%s action=submit", user_id, sid, step_key)
     if not sid:
-        await callback.message.answer(get_copy("V2_SUBMIT_CONFIRM"))
+        await callback.message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
+        return
+    await callback.message.answer(
+        get_copy("SUBMIT_Q7_SEND_PROMPT"),
+        reply_markup=_preview_confirm_kb(),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == f"{PREFIX}:submit_no")
+async def cb_submit_no(callback: CallbackQuery, state: FSMContext) -> None:
+    """No on submit confirm: return to Preview (do not end flow)."""
+    await callback.answer()
+    data = await state.get_data()
+    sid = data.get("submission_id")
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("button user_id=%s submission_id=%s step_id=preview action=submit_no", user_id, sid)
+    await show_preview(callback.message, state)
+
+
+@router.callback_query(F.data == f"{PREFIX}:submit_yes")
+async def cb_submit_yes(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    data = await state.get_data()
+    sid = data.get("submission_id")
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("button user_id=%s submission_id=%s step_id=preview action=submit_yes", user_id, sid)
+    if not sid:
+        await callback.message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
         await state.clear()
         return
     try:
@@ -77,8 +118,8 @@ async def cb_submit(callback: CallbackQuery, state: FSMContext) -> None:
     sub = await get_submission(sub_id)
     if not sub:
         await state.clear()
-        from src.v2.routers.start import show_v2_cabinet
-        await show_v2_cabinet(callback.message, state)
+        from src.v2.routers.menu import show_menu_cabinet
+        await show_menu_cabinet(callback.message, state)
         return
     rendered_post = render_submission_to_html(sub.answers or {})
     settings = Settings()
@@ -117,13 +158,25 @@ async def cb_submit(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await callback.message.answer(get_copy("V2_SUBMIT_CONFIRM"))
     await state.clear()
-    from src.v2.routers.start import show_v2_cabinet
-    await show_v2_cabinet(callback.message, state)
+    from src.v2.routers.menu import show_menu_cabinet
+    await show_menu_cabinet(callback.message, state)
+
+
+@router.callback_query(F.data == f"{PREFIX}:menu")
+async def cb_preview_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    """From Preview: go to cabinet (global escape hatch)."""
+    await callback.answer()
+    from src.v2.routers.menu import show_menu_cabinet
+    await show_menu_cabinet(callback, state)
 
 
 @router.callback_query(F.data == f"{PREFIX}:back")
 async def cb_back(callback: CallbackQuery, state: FSMContext) -> None:
+    """Edit answers: return to last form step (q21)."""
     await callback.answer()
+    data = await state.get_data()
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("button user_id=%s submission_id=%s step_id=preview action=edit", user_id, data.get("submission_id"))
     from src.v2.fsm.states import V2FormSteps
     from src.v2.routers.form import show_question
     await state.set_state(V2FormSteps.answering)

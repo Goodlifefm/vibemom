@@ -48,6 +48,7 @@ async def handle_mod_callback(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.answer(get_copy("V2_MOD_NO_RIGHTS"), show_alert=True)
         return
     action, sub_id = _parse_callback(callback.data or "")
+    logger.info("button user_id=%s submission_id=%s step_id=mod action=%s", tid, str(sub_id) if sub_id else None, action)
     if not action or not sub_id:
         await callback.answer()
         return
