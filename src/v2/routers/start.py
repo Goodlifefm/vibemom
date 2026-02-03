@@ -73,6 +73,8 @@ async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: F
 async def _do_resume(message: Message, state: FSMContext) -> None:
     """Load active submission, restore current_step, show question (for /resume and Resume button)."""
     from src.v2.repo import get_or_create_user, get_active_submission
+    from src.bot.keyboards import reply_menu_keyboard
+    await message.answer(get_copy("V2_MENU_HINT"), reply_markup=reply_menu_keyboard())
     user = await get_or_create_user(
         message.from_user.id if message.from_user else 0,
         message.from_user.username if message.from_user else None,

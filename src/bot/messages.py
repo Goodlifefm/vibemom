@@ -407,9 +407,13 @@ V2_MENU_MY_PROJECTS = "📄 Мои проекты"
 V2_MENU_CREATE = "➕ Создать проект"
 V2_MENU_HELP = "❓ Помощь / Команды"
 V2_MENU_STATUS = "🔁 Статус"
+V2_MENU_CURRENT_STEP = "📌 Текущий шаг"
+V2_MENU_PROJECT = "🗂 Проект"
 V2_MENU_RESTART_CONFIRM = "Начать заново? Текущий прогресс будет сброшен. Продолжить?"
 V2_MENU_STATUS_TEMPLATE = "Текущий шаг: {step}\nПроект: {project}\n{extra}"
 V2_MENU_STATUS_NO_PROJECT = "Нет активного проекта."
+V2_CABINET_STATUS = "Текущий проект: {project}\nТекущий шаг: {step}\nПрогресс: {progress}%"
+V2_PROJECT_NO_DATA = "Собранные данные пока отсутствуют. Заполни шаги формы."
 V2_HELP_TEXT = """Команды:
 /start — главное меню
 /menu — меню (кабинет)
@@ -617,9 +621,13 @@ COPY_IDS = [
     "V2_MENU_CREATE",
     "V2_MENU_HELP",
     "V2_MENU_STATUS",
+    "V2_MENU_CURRENT_STEP",
+    "V2_MENU_PROJECT",
     "V2_MENU_RESTART_CONFIRM",
     "V2_MENU_STATUS_TEMPLATE",
     "V2_MENU_STATUS_NO_PROJECT",
+    "V2_CABINET_STATUS",
+    "V2_PROJECT_NO_DATA",
     "V2_HELP_TEXT",
     "V2_HOW_IT_WORKS",
     "V2_MY_PROJECTS_HEADER",

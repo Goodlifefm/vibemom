@@ -26,16 +26,19 @@ def menu_cabinet_inline_kb(
     show_resume: bool = False,
     has_projects: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Inline keyboard for menu/cabinet: Continue, Start over, My projects, Create, Help, Status."""
+    """Inline keyboard for menu/cabinet: Continue, Current step, Project, Start over, My projects, Create, Help."""
     rows = []
     if show_resume:
         rows.append([InlineKeyboardButton(text=get_copy("V2_MENU_CONTINUE").strip(), callback_data=f"{MENU_PREFIX}:resume")])
     rows.extend([
+        [
+            InlineKeyboardButton(text=get_copy("V2_MENU_CURRENT_STEP").strip(), callback_data=f"{MENU_PREFIX}:current_step"),
+            InlineKeyboardButton(text=get_copy("V2_MENU_PROJECT").strip(), callback_data=f"{MENU_PREFIX}:project"),
+        ],
         [InlineKeyboardButton(text=get_copy("V2_MENU_RESTART").strip(), callback_data=f"{MENU_PREFIX}:restart")],
         [InlineKeyboardButton(text=get_copy("V2_MENU_MY_PROJECTS").strip(), callback_data=f"{MENU_PREFIX}:projects")],
         [InlineKeyboardButton(text=get_copy("V2_MENU_CREATE").strip(), callback_data=f"{MENU_PREFIX}:create")],
         [InlineKeyboardButton(text=get_copy("V2_MENU_HELP").strip(), callback_data=f"{MENU_PREFIX}:help")],
-        [InlineKeyboardButton(text=get_copy("V2_MENU_STATUS").strip(), callback_data=f"{MENU_PREFIX}:status")],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -1,4 +1,5 @@
-"""Step 4.5 verification: V2 validators, step registry, save message."""
+"""Step 4.5 verification: V2 validators, step registry, save message, step format."""
+from src.v2.format_step import format_step_message, parse_copy_to_parts
 from src.v2.validators import (
     validate_non_empty,
     validate_email,
@@ -44,3 +45,32 @@ def test_save_message_exact():
     msg = get_copy("V2_SAVED_RESUME")
     assert "Сохранено" in msg
     assert "/resume" in msg
+
+
+def test_format_step_message_unified_template():
+    """Единый шаблон: Шаг X из Y, пустая строка, заголовок, пояснение, пример."""
+    text = format_step_message(
+        step_num=1,
+        total=21,
+        title="Название проекта",
+        intro="Короткое пояснение.",
+        todo=None,
+        example="AI-ассистент",
+    )
+    assert text.startswith("Шаг 1 из 21")
+    assert "\n\n" in text
+    assert "📌" in text
+    assert "Название проекта" in text
+    assert "Короткое пояснение" in text
+    assert "Пример:" in text
+    assert "AI-ассистент" in text
+
+
+def test_parse_copy_to_parts():
+    """Из копирайта извлекаются title, intro, example."""
+    copy_text = "Заголовок шага\nПояснение строка.\nПример: значение"
+    parts = parse_copy_to_parts(copy_text)
+    assert parts["title"] == "Заголовок шага"
+    assert "Пояснение" in (parts["intro"] or "")
+    assert parts["example"] == "значение"
+    assert parts["todo"] is None
