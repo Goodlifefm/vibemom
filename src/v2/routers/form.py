@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from src.bot.messages import get_copy
 from src.v2.repo import get_submission, update_answers_step
 from src.v2.fsm.states import V2FormSteps
+from src.v2.format_step import format_step_message_html
 from src.v2.fsm.steps import (
     STEP_KEYS,
     get_step,
@@ -38,15 +39,15 @@ def _form_kb(step_key: str) -> InlineKeyboardMarkup:
 
 
 def _question_text(step_key: str) -> str:
-    """Build question text with progress (Шаг X из Y) + title and hint from copy."""
+    """Build question text: progress (📌 Шаг X из Y), then formatted body (bold title, blocks, italic Example)."""
     step_def = get_step(step_key)
     if not step_def:
         return ""
     idx = get_step_index(step_key)
     total = len(STEP_KEYS)
-    progress = get_copy("V2_FORM_PROGRESS").format(current=idx + 1, total=total)
+    progress = "📌 " + get_copy("V2_FORM_PROGRESS").format(current=idx + 1, total=total)
     body = get_copy(step_def["copy_id"])
-    return f"{progress}\n\n{body}"
+    return format_step_message_html(progress, body)
 
 
 async def show_question(message: Message, state: FSMContext, step_key: str) -> None:
