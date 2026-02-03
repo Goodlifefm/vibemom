@@ -120,12 +120,26 @@ def answers_to_project_fields(answers: dict) -> dict[str, str]:
 
 
 def _format_dev_cost_v2(answers: dict) -> str:
-    """Format dev cost: HIDDEN => не раскрываю; range => ₽ 50 000 – 120 000."""
-    currency = (answers.get("econ_dev_cost_currency") or "").strip().upper()
-    if currency == "HIDDEN":
+    """Format dev cost: HIDDEN => не раскрываю; range => ₽ 50 000 – 120 000.
+    Supports budget_* (new single-step) and econ_dev_cost_* (legacy) keys."""
+    if answers.get("budget_hidden") is True:
         return "не раскрываю"
-    min_v = answers.get("econ_dev_cost_min")
-    max_v = answers.get("econ_dev_cost_max")
+    mn = answers.get("budget_min")
+    mx = answers.get("budget_max")
+    cur = (answers.get("budget_currency") or "").strip().upper()
+    if mn is not None or mx is not None or cur:
+        try:
+            min_v = int(mn) if mn is not None else None
+            max_v = int(mx) if mx is not None else None
+        except (TypeError, ValueError):
+            min_v = max_v = None
+        currency = cur or "RUB"
+    else:
+        currency = (answers.get("econ_dev_cost_currency") or "").strip().upper()
+        if currency == "HIDDEN":
+            return "не раскрываю"
+        min_v = answers.get("econ_dev_cost_min")
+        max_v = answers.get("econ_dev_cost_max")
     if min_v is not None or max_v is not None:
         try:
             mn = int(min_v) if min_v is not None else None

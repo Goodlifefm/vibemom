@@ -20,7 +20,7 @@ from src.v2.fsm.steps import (
     is_optional,
     is_multi_link,
 )
-from src.v2.validators import validate
+from src.v2.validators import validate, parse_budget
 
 router = Router()
 PREFIX = "v2form"
@@ -123,10 +123,23 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
         await message.answer(get_copy("V2_LINK_ADDED"), parse_mode="HTML")
         await show_question(message, state, step_key)
         return
+    if step_key == "q10" and answer_key == "budget":
+        parsed = parse_budget(text)
+        if parsed:
+            answers_delta = {
+                "budget_min": parsed.get("budget_min"),
+                "budget_max": parsed.get("budget_max"),
+                "budget_currency": parsed.get("budget_currency"),
+                "budget_hidden": parsed.get("budget_hidden", False),
+            }
+        else:
+            answers_delta = {answer_key: text}
+    else:
+        answers_delta = {answer_key: text}
     next_step = get_next_step(step_key)
     if not next_step:
         return
-    await _persist_and_go_next(message, state, sub_id, {answer_key: text}, next_step)
+    await _persist_and_go_next(message, state, sub_id, answers_delta, next_step)
 
 
 # ---- Back ----
@@ -217,7 +230,7 @@ async def handle_finish_links(callback: CallbackQuery, state: FSMContext) -> Non
     data = await state.get_data()
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
-    if not sid or step_key != "q21":
+    if not sid or step_key != "q19":
         return
     try:
         sub_id = uuid.UUID(sid)

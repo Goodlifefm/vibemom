@@ -19,7 +19,7 @@ from src.v2.repo import (
     log_admin_action,
 )
 from src.v2.fsm.states import V2ModSteps
-from src.v2.rendering import render_for_feed
+from src.v2.rendering import assert_preview_publish_consistency, render_post
 
 router = Router()
 PREFIX = "v2mod"
@@ -96,8 +96,12 @@ async def handle_mod_callback(callback: CallbackQuery, state: FSMContext) -> Non
         if not feed_chat_id:
             logger.warning("FEED_CHAT_ID not set; skipping auto-publish for project_id=%s", sub_id)
         else:
+            # Same renderer as preview so published post matches preview exactly
+            result = render_post(sub.answers or {}, mode="publish")
+            rendered_post = result["text"]
+            assert_preview_publish_consistency(sub.answers, rendered_post)
+            logger.debug("publish post body (same as preview) len=%s", len(rendered_post))
             try:
-                rendered_post = render_for_feed(sub.answers)
                 sent = await callback.bot.send_message(
                     chat_id=feed_chat_id,
                     text=rendered_post,

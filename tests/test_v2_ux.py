@@ -6,6 +6,8 @@ from src.v2.validators import (
     validate_link,
     validate_time,
     validate_cost,
+    validate_budget,
+    parse_budget,
     validate_contact,
 )
 from src.v2.fsm.steps import get_step, is_optional, is_multi_link, get_next_step, get_prev_step
@@ -23,20 +25,32 @@ def test_validators():
     assert validate_time("2 months") == (True, None)
     assert validate_cost("") == (False, "V2_INVALID_REQUIRED")
     assert validate_cost("не раскрываю") == (True, None)
+    assert validate_budget("") == (False, "V2_INVALID_REQUIRED")
+    assert validate_budget("HIDDEN") == (True, None)
+    assert validate_budget("150000-300000 RUB") == (True, None)
+    assert validate_budget("500 USD") == (True, None)
+    assert validate_budget("invalid") == (False, "V2_INVALID_BUDGET")
     assert validate_contact("@u") == (True, None)
 
 
-def test_step_registry_q8_q14_q18_optional():
+def test_parse_budget():
+    assert parse_budget("HIDDEN") == {"budget_min": None, "budget_max": None, "budget_currency": None, "budget_hidden": True}
+    assert parse_budget("500 USD") == {"budget_min": 500, "budget_max": None, "budget_currency": "USD", "budget_hidden": False}
+    assert parse_budget("150000-300000 RUB") == {"budget_min": 150000, "budget_max": 300000, "budget_currency": "RUB", "budget_hidden": False}
+    assert parse_budget("100") == {"budget_min": 100, "budget_max": None, "budget_currency": "RUB", "budget_hidden": False}
+
+
+def test_step_registry_q8_q12_q16_optional():
     assert is_optional("q8") is True
-    assert is_optional("q14") is True
-    assert is_optional("q18") is True
+    assert is_optional("q12") is True
+    assert is_optional("q16") is True
     assert is_optional("q1") is False
 
 
-def test_step_registry_q21_multi_link():
-    assert is_multi_link("q21") is True
+def test_step_registry_q19_multi_link():
+    assert is_multi_link("q19") is True
     assert is_multi_link("q1") is False
-    s = get_step("q21")
+    s = get_step("q19")
     assert s is not None
     assert s["answer_key"] == "links"
 
@@ -51,13 +65,13 @@ def test_format_step_message_unified_template():
     """Единый шаблон: Шаг X из Y, пустая строка, заголовок, пояснение, пример."""
     text = format_step_message(
         step_num=1,
-        total=21,
+        total=19,
         title="Название проекта",
         intro="Короткое пояснение.",
         todo=None,
         example="AI-ассистент",
     )
-    assert text.startswith("Шаг 1 из 21")
+    assert text.startswith("Шаг 1 из 19")
     assert "\n\n" in text
     assert "📌" in text
     assert "Название проекта" in text

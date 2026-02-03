@@ -51,10 +51,49 @@ def render_project_post_html(blocks: dict[str, str | list[str] | None]) -> str:
     return "\n\n".join(parts)
 
 
+def _format_price_from_answers(answers: dict) -> str | None:
+    """
+    Extract price string from answers.
+    Supports: budget_min/max/currency/hidden (new) and currency/cost/cost_max (legacy).
+    """
+    budget_hidden = answers.get("budget_hidden")
+    if budget_hidden is True:
+        return "не раскрываю"
+    mn = answers.get("budget_min")
+    mx = answers.get("budget_max")
+    currency = answers.get("budget_currency") or answers.get("currency") or ""
+    if mn is not None or mx is not None or currency:
+        try:
+            mn_val = int(mn) if mn is not None else None
+            mx_val = int(mx) if mx is not None else None
+        except (TypeError, ValueError):
+            mn_val = mx_val = None
+        cur = str(currency or "").strip().upper() or "RUB"
+        if mn_val is not None and mx_val is not None:
+            if cur == "RUB":
+                return f"₽ {mn_val:,} – {mx_val:,}".replace(",", " ")
+            if cur == "USD":
+                return f"$ {mn_val:,} – {mx_val:,}".replace(",", " ")
+        if mn_val is not None:
+            return (f"₽ {mn_val:,}" if cur == "RUB" else f"$ {mn_val:,}").replace(",", " ")
+        if mx_val is not None:
+            return (f"₽ {mx_val:,}" if cur == "RUB" else f"$ {mx_val:,}").replace(",", " ")
+    cost = answers.get("cost")
+    cost_max = answers.get("cost_max")
+    if cost is not None or cost_max is not None:
+        parts = [str(cost or "").strip(), str(cost_max or "").strip()]
+        cur = str(answers.get("currency") or "").strip()
+        if cur:
+            return " – ".join(p for p in parts if p) + f" {cur}".strip()
+        return " – ".join(p for p in parts if p).strip() or None
+    return None
+
+
 def submission_answers_to_blocks(answers: dict | None) -> dict[str, str | list[str] | None]:
     """
     Map V2 submission.answers to PROJECT_POST blocks (title, description, stack, link, price, contact).
     SPEC POST_PLACEHOLDERS_MAPPING; V2 keys: title, subtitle, description, contact, author_contact, links, etc.
+    Supports budget_* (new) and currency/cost/cost_max (legacy).
     """
     if not answers:
         answers = {}
@@ -83,11 +122,9 @@ def submission_answers_to_blocks(answers: dict | None) -> dict[str, str | list[s
     if link and not isinstance(link, str):
         link = str(link).strip() if link else None
 
-    price_parts = []
-    for k in ("currency", "cost", "cost_max"):
-        if answers.get(k):
-            price_parts.append(str(answers[k]).strip())
-    price = " ".join(price_parts) if price_parts else (answers.get("price") or None)
+    price = _format_price_from_answers(answers)
+    if not price:
+        price = answers.get("price")
     if price and isinstance(price, str):
         price = price.strip() or None
 
@@ -108,9 +145,68 @@ def submission_answers_to_blocks(answers: dict | None) -> dict[str, str | list[s
 def render_submission_to_html(answers: dict | None) -> str:
     """
     Build safe HTML from submission.answers (V2). Uses PROJECT_POST; maps answers to blocks.
+    Single source of truth for post body: same output for preview and publish.
     """
     blocks = submission_answers_to_blocks(answers)
     return render_project_post_html(blocks)
+
+
+# Mode for render_post: "preview" adds header; "publish" is body only (same layout).
+RenderPostResult = dict  # {"text": str, "parse_mode": str, "disable_web_page_preview": bool}
+
+
+def _body_for_post(answers: dict | None) -> str:
+    """Post body only (no preview header). Single source of truth for layout."""
+    return render_submission_to_html(answers)
+
+
+def render_post(
+    answers: dict | None,
+    mode: str = "publish",
+    preview_header: str | None = None,
+) -> RenderPostResult:
+    """
+    Single source of truth for post text. Use for both preview and publish so they match exactly.
+
+    - mode="preview": text = preview_header + "\\n\\n" + body (same body as publish).
+    - mode="publish": text = body only.
+
+    Returns dict: {text, parse_mode="HTML", disable_web_page_preview=False}.
+    """
+    body = _body_for_post(answers)
+    if mode == "preview" and preview_header:
+        text = preview_header.strip() + "\n\n" + body
+    else:
+        text = body
+    return {
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False,
+    }
+
+
+def assert_preview_publish_consistency(answers: dict | None, publish_text: str) -> None:
+    """
+    Regression check: body used for publish must match body from single renderer.
+    Logs both and raises AssertionError if they differ (so preview and publish stay identical).
+    """
+    import logging
+    expected_body = _body_for_post(answers)
+    if publish_text != expected_body:
+        log = logging.getLogger(__name__)
+        log.error(
+            "preview/publish mismatch: publish text != render_post body. expected_body_len=%s publish_len=%s",
+            len(expected_body),
+            len(publish_text),
+        )
+        log.debug("expected_body=%r", expected_body)
+        log.debug("publish_text=%r", publish_text)
+        raise AssertionError(
+            "Publish text must match preview body (same render_post). "
+            f"Len expected={len(expected_body)} got={len(publish_text)}"
+        )
+    log = logging.getLogger(__name__)
+    log.debug("preview_publish_consistency ok submission_answers_len=%s body_len=%s", len(answers or {}), len(publish_text))
 
 
 def project_to_feed_answers(project: Any) -> dict:
@@ -145,17 +241,9 @@ def render_for_feed(answers: dict | None) -> str:
     title = _escape(answers.get("title") or "").strip() or "—"
     desc = _escape(answers.get("description") or "").strip() or "—"
     contact = _escape(answers.get("author_contact") or answers.get("contact") or "").strip() or "—"
-    cost = str(answers.get("cost") or "").strip()
-    cost_max = str(answers.get("cost_max") or "").strip()
-    currency = str(answers.get("currency") or "").strip()
+    price_formatted = _format_price_from_answers(answers)
     price_single = str(answers.get("price") or "").strip()
-    if cost or cost_max or currency:
-        if currency:
-            price = f"{cost} – {cost_max} {currency}".strip(" –") if (cost or cost_max) else "—"
-        else:
-            price = f"{cost} – {cost_max}".strip(" –") or "—"
-    else:
-        price = _escape(price_single) if price_single else "—"
+    price = _escape(price_formatted) if price_formatted else (_escape(price_single) if price_single else "—")
     links = answers.get("links")
     if isinstance(links, list) and links:
         link = next((str(x).strip() for x in links if x and str(x).strip()), "")

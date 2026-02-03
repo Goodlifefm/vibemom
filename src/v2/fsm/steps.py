@@ -1,7 +1,7 @@
 """
 V2 step registry: single source of truth.
 step_key -> answer_key, copy_id, validator, optional, multi_link, next_step, prev_step.
-Q8, Q14, Q18 optional; Q21 multi_link (links array).
+Q8, Q12, Q16 optional; Q19 multi_link (links array). Budget is single step q10.
 """
 from typing import TypedDict
 
@@ -39,7 +39,8 @@ def _step(
     )
 
 
-# 21 steps: q1..q21. Q8, Q14, Q18 optional. Q21 multi_link.
+# 19 steps: q1..q10 (budget), q11..q18, preview. Q8, Q14, Q17 optional. Q18 multi_link.
+# Budget: single step (replaces old currency, cost, cost_max).
 _STEPS: list[StepDef] = [
     _step("q1", "title", "V2_FORM_STEP1", "non_empty", False, False, "q2", None),
     _step("q2", "description", "V2_FORM_STEP2", "non_empty", False, False, "q3", "q1"),
@@ -50,18 +51,16 @@ _STEPS: list[StepDef] = [
     _step("q7", "status", "V2_PRODUCT_STATUS", "non_empty", False, False, "q8", "q6"),
     _step("q8", "stack_reason", "V2_STACK_REASON", "non_empty", True, False, "q9", "q7"),
     _step("q9", "time_spent", "V2_ECON_TIME_SPENT", "time", False, False, "q10", "q8"),
-    _step("q10", "currency", "V2_ECON_DEV_COST_CURRENCY", "non_empty", False, False, "q11", "q9"),
-    _step("q11", "cost", "V2_ECON_DEV_COST_MIN", "cost", False, False, "q12", "q10"),
-    _step("q12", "cost_max", "V2_ECON_DEV_COST_MAX", "non_empty", False, False, "q13", "q11"),
-    _step("q13", "potential", "V2_ECON_POTENTIAL", "non_empty", False, False, "q14", "q12"),
-    _step("q14", "traction", "V2_GTM_TRACTION", "non_empty", True, False, "q15", "q13"),
-    _step("q15", "gtm_stage", "V2_GTM_STAGE", "non_empty", False, False, "q16", "q14"),
-    _step("q16", "goal_pub", "V2_GOAL_PUBLICATION", "non_empty", False, False, "q17", "q15"),
-    _step("q17", "goal_inbound", "V2_GOAL_INBOUND_READY", "non_empty", False, False, "q18", "q16"),
-    _step("q18", "channels", "V2_CHANNELS", "non_empty", True, False, "q19", "q17"),
-    _step("q19", "author_name", "V2_AUTHOR_NAME", "non_empty", False, False, "q20", "q18"),
-    _step("q20", "author_contact", "V2_AUTHOR_EMAIL", "contact", False, False, "q21", "q19"),
-    _step("q21", "links", "V2_LINK_ADD_PROMPT", "link", False, True, "preview", "q20"),
+    _step("q10", "budget", "V2_ECON_BUDGET", "budget", False, False, "q11", "q9"),
+    _step("q11", "potential", "V2_ECON_POTENTIAL", "non_empty", False, False, "q12", "q10"),
+    _step("q12", "traction", "V2_GTM_TRACTION", "non_empty", True, False, "q13", "q11"),
+    _step("q13", "gtm_stage", "V2_GTM_STAGE", "non_empty", False, False, "q14", "q12"),
+    _step("q14", "goal_pub", "V2_GOAL_PUBLICATION", "non_empty", False, False, "q15", "q13"),
+    _step("q15", "goal_inbound", "V2_GOAL_INBOUND_READY", "non_empty", False, False, "q16", "q14"),
+    _step("q16", "channels", "V2_CHANNELS", "non_empty", True, False, "q17", "q15"),
+    _step("q17", "author_name", "V2_AUTHOR_NAME", "non_empty", False, False, "q18", "q16"),
+    _step("q18", "author_contact", "V2_AUTHOR_EMAIL", "contact", False, False, "q19", "q17"),
+    _step("q19", "links", "V2_LINK_ADD_PROMPT", "link", False, True, "preview", "q18"),
 ]
 
 STEP_REGISTRY: list[StepDef] = _STEPS

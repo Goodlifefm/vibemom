@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from src.bot.config import Settings
 from src.bot.messages import get_copy
 from src.v2.repo import get_submission, submit_for_moderation, get_user_by_id
-from src.v2.rendering import render_submission_to_html
+from src.v2.rendering import render_post, render_submission_to_html
 
 router = Router()
 PREFIX = "v2preview"
@@ -64,9 +64,13 @@ async def show_preview(message: Message, state: FSMContext) -> None:
         await message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
         return
     answers = sub.answers or {}
-    body_html = render_submission_to_html(answers)
-    text = get_copy("V2_PREVIEW_POST") + "\n\n" + body_html
-    await message.answer(text, reply_markup=_preview_kb(), parse_mode="HTML")
+    result = render_post(answers, mode="preview", preview_header=get_copy("V2_PREVIEW_POST"))
+    await message.answer(
+        result["text"],
+        reply_markup=_preview_kb(),
+        parse_mode=result["parse_mode"],
+        disable_web_page_preview=result.get("disable_web_page_preview", False),
+    )
 
 
 @router.callback_query(F.data == f"{PREFIX}:submit")
@@ -121,7 +125,9 @@ async def cb_submit_yes(callback: CallbackQuery, state: FSMContext) -> None:
         from src.v2.routers.menu import show_menu_cabinet
         await show_menu_cabinet(callback.message, state)
         return
-    rendered_post = render_submission_to_html(sub.answers or {})
+    # Same renderer as preview so published post matches preview layout exactly
+    publish_result = render_post(sub.answers or {}, mode="publish")
+    rendered_post = publish_result["text"]
     settings = Settings()
     admin_chat_id = (settings.admin_chat_id or "").strip()
     if not admin_chat_id:
@@ -172,7 +178,7 @@ async def cb_preview_menu(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == f"{PREFIX}:back")
 async def cb_back(callback: CallbackQuery, state: FSMContext) -> None:
-    """Edit answers: return to last form step (q21)."""
+    """Edit answers: return to last form step (q19)."""
     await callback.answer()
     data = await state.get_data()
     user_id = callback.from_user.id if callback.from_user else 0
@@ -180,5 +186,5 @@ async def cb_back(callback: CallbackQuery, state: FSMContext) -> None:
     from src.v2.fsm.states import V2FormSteps
     from src.v2.routers.form import show_question
     await state.set_state(V2FormSteps.answering)
-    await state.update_data(current_step_key="q21")
-    await show_question(callback.message, state, "q21")
+    await state.update_data(current_step_key="q19")
+    await show_question(callback.message, state, "q19")
