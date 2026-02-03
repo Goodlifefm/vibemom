@@ -398,6 +398,27 @@ V2_BTN_CREATE_PROJECT = "➕ Создать проект"
 V2_BTN_MY_PROJECTS = "📦 Мои проекты"
 V2_BTN_HOW_IT_WORKS = "ℹ️ Как это работает"
 
+# Menu (persistent button + cabinet actions)
+V2_MENU_BTN = "🏠 Меню"
+V2_MENU_HINT = "Кнопка «Меню» ниже — возврат с любого шага."
+V2_MENU_CONTINUE = "▶️ Продолжить"
+V2_MENU_RESTART = "🧭 Начать заново"
+V2_MENU_MY_PROJECTS = "📄 Мои проекты"
+V2_MENU_CREATE = "➕ Создать проект"
+V2_MENU_HELP = "❓ Помощь / Команды"
+V2_MENU_STATUS = "🔁 Статус"
+V2_MENU_RESTART_CONFIRM = "Начать заново? Текущий прогресс будет сброшен. Продолжить?"
+V2_MENU_STATUS_TEMPLATE = "Текущий шаг: {step}\nПроект: {project}\n{extra}"
+V2_MENU_STATUS_NO_PROJECT = "Нет активного проекта."
+V2_HELP_TEXT = """Команды:
+/start — главное меню
+/menu — меню (кабинет)
+/resume — продолжить заполнение
+/catalog — каталог проектов
+/request — оставить заявку
+/my_requests — мои заявки
+/leads — мои лиды (продавцам)"""
+
 V2_HOW_IT_WORKS = "Создай → заполни → отправь → после одобрения попадёт в ленту. В любой момент можно вернуться к редактированию."
 
 V2_MY_PROJECTS_HEADER = "📦 Мои проекты"
@@ -588,6 +609,18 @@ COPY_IDS = [
     "V2_BTN_CREATE_PROJECT",
     "V2_BTN_MY_PROJECTS",
     "V2_BTN_HOW_IT_WORKS",
+    "V2_MENU_BTN",
+    "V2_MENU_HINT",
+    "V2_MENU_CONTINUE",
+    "V2_MENU_RESTART",
+    "V2_MENU_MY_PROJECTS",
+    "V2_MENU_CREATE",
+    "V2_MENU_HELP",
+    "V2_MENU_STATUS",
+    "V2_MENU_RESTART_CONFIRM",
+    "V2_MENU_STATUS_TEMPLATE",
+    "V2_MENU_STATUS_NO_PROJECT",
+    "V2_HELP_TEXT",
     "V2_HOW_IT_WORKS",
     "V2_MY_PROJECTS_HEADER",
     "V2_MY_PROJECTS_EMPTY",

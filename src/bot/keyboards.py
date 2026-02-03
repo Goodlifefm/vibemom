@@ -1,10 +1,51 @@
 """Centralized keyboard builders. Labels from messages.py; callback_data stable."""
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
 
 from src.bot.messages import get_copy
 
 PS = "ps"
+MENU_PREFIX = "v2menu"
+
+
+def reply_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Persistent reply keyboard with single button: 🏠 Меню. Shown from any state."""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=get_copy("V2_MENU_BTN").strip())]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+def menu_cabinet_inline_kb(
+    show_resume: bool = False,
+    has_projects: bool = False,
+) -> InlineKeyboardMarkup:
+    """Inline keyboard for menu/cabinet: Continue, Start over, My projects, Create, Help, Status."""
+    rows = []
+    if show_resume:
+        rows.append([InlineKeyboardButton(text=get_copy("V2_MENU_CONTINUE").strip(), callback_data=f"{MENU_PREFIX}:resume")])
+    rows.extend([
+        [InlineKeyboardButton(text=get_copy("V2_MENU_RESTART").strip(), callback_data=f"{MENU_PREFIX}:restart")],
+        [InlineKeyboardButton(text=get_copy("V2_MENU_MY_PROJECTS").strip(), callback_data=f"{MENU_PREFIX}:projects")],
+        [InlineKeyboardButton(text=get_copy("V2_MENU_CREATE").strip(), callback_data=f"{MENU_PREFIX}:create")],
+        [InlineKeyboardButton(text=get_copy("V2_MENU_HELP").strip(), callback_data=f"{MENU_PREFIX}:help")],
+        [InlineKeyboardButton(text=get_copy("V2_MENU_STATUS").strip(), callback_data=f"{MENU_PREFIX}:status")],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def menu_restart_confirm_kb() -> InlineKeyboardMarkup:
+    """Yes/No for 'Start over' confirmation."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=get_copy("YES_BUTTON").strip(), callback_data=f"{MENU_PREFIX}:restart_yes")],
+        [InlineKeyboardButton(text=get_copy("NO_BUTTON").strip(), callback_data=f"{MENU_PREFIX}:restart_no")],
+    ])
 
 
 def yes_no_kb_submit() -> InlineKeyboardMarkup:

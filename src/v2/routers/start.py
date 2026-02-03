@@ -33,6 +33,7 @@ def _status_copy(status: ProjectStatus) -> str:
 
 
 def cabinet_kb(show_resume: bool = False) -> InlineKeyboardMarkup:
+    """Legacy cabinet inline kb (v2cab). Prefer menu_cabinet_inline_kb for main cabinet."""
     rows = []
     if show_resume:
         rows.append([InlineKeyboardButton(text=get_copy("V2_BTN_RESUME_PROJECT").strip(), callback_data=f"{PREFIX}:resume")])
@@ -45,13 +46,28 @@ def cabinet_kb(show_resume: bool = False) -> InlineKeyboardMarkup:
 
 
 async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: FSMContext | None = None) -> None:
-    """Show V2 cabinet. Call from start handler when v2_enabled."""
+    """Show V2 cabinet (greeting + menu inline kb) and set persistent 🏠 Меню reply keyboard."""
+    from src.bot.keyboards import menu_cabinet_inline_kb, reply_menu_keyboard
     target = message_or_callback.message if isinstance(message_or_callback, CallbackQuery) else message_or_callback
     show_resume = False
+    has_projects = False
     if state:
         data = await state.get_data()
         show_resume = bool(data.get("submission_id"))
-    await target.answer(get_copy("V2_CABINET_GREETING"), reply_markup=cabinet_kb(show_resume=show_resume))
+    try:
+        u = getattr(message_or_callback, "from_user", None)
+        user = await get_or_create_user(
+            u.id if u else 0,
+            u.username if u else None,
+            u.full_name if u else None,
+        )
+        subs = await list_submissions_by_user(user.id, limit=1)
+        has_projects = bool(subs)
+    except Exception:
+        pass
+    kb = menu_cabinet_inline_kb(show_resume=show_resume, has_projects=has_projects)
+    await target.answer(get_copy("V2_CABINET_GREETING"), reply_markup=kb)
+    await target.answer(get_copy("V2_MENU_HINT"), reply_markup=reply_menu_keyboard())
 
 
 async def _do_resume(message: Message, state: FSMContext) -> None:
