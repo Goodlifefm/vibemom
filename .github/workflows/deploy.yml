@@ -18,20 +18,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check deploy secrets
+        run: |
+          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "Error: VPS_HOST secret is not set"; exit 1; fi
+          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "Error: VPS_USER secret is not set"; exit 1; fi
+          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "Error: VPS_SSH_KEY secret is not set"; exit 1; fi
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          command_options: "-o StrictHostKeyChecking=no"
+          port: ${{ secrets.VPS_PORT || '22' }}
+          command_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
           script_stop: true
           envs: REF_NAME
         env:
           REF_NAME: ${{ github.ref_name }}
         script: |
-          cd /root/vibemom
+          set -e
+          cd /root/vibemom || (echo "Error: /root/vibemom not found"; exit 1)
           git fetch --all
           git reset --hard origin/$REF_NAME
           docker compose pull || true
