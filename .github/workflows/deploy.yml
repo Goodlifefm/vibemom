@@ -8,17 +8,21 @@ on:
       - v2-editor
   workflow_dispatch:
 
+concurrency:
+  group: deploy-vps-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      SSH_PORT: ${{ secrets.VPS_PORT }}
+
     steps:
       - name: Resolve SSH port
         id: ssh_port
-        env:
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-        run: |
-          echo "port=${VPS_PORT:-22}" >> "$GITHUB_OUTPUT"
+        run: echo "port=${SSH_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -36,8 +40,29 @@ jobs:
             git fetch --all
             git reset --hard origin/v2-editor
 
+            # Export version info for deployment verification
+            export GIT_SHA=$(git rev-parse --short HEAD)
+            export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            export BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+            echo "=== Deploying version ==="
+            echo "SHA: $GIT_SHA"
+            echo "Branch: $GIT_BRANCH"
+            echo "Build: $BUILD_TIME"
+            echo "========================="
+
+            # Write version vars to .env (append/replace)
+            grep -v '^GIT_SHA=' .env > .env.tmp 2>/dev/null || true
+            grep -v '^GIT_BRANCH=' .env.tmp > .env.tmp2 2>/dev/null || true
+            grep -v '^BUILD_TIME=' .env.tmp2 > .env 2>/dev/null || true
+            rm -f .env.tmp .env.tmp2
+            echo "GIT_SHA=$GIT_SHA" >> .env
+            echo "GIT_BRANCH=$GIT_BRANCH" >> .env
+            echo "BUILD_TIME=$BUILD_TIME" >> .env
+
             docker compose pull || true
-            docker compose up -d --build
+            docker compose up -d --build --no-cache bot
 
             docker compose ps
-            docker compose logs --tail=120 bot
+            echo "=== Bot logs (last 50 lines) ==="
+            docker compose logs --tail=50 bot

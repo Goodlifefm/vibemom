@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 
 from aiogram import Bot, Dispatcher
@@ -19,6 +20,16 @@ _root.addHandler(_handler)
 logger = logging.getLogger(__name__)
 
 
+def _boot_version_line() -> str:
+    """Build boot version info line for logging."""
+    sha = os.getenv("GIT_SHA", "unknown")
+    branch = os.getenv("GIT_BRANCH", "unknown")
+    build_time = os.getenv("BUILD_TIME", "unknown")
+    env = os.getenv("APP_ENV", "unknown")
+    v2 = os.getenv("V2_ENABLED", "false")
+    return f"BOOT: sha={sha}, branch={branch}, build={build_time}, env={env}, v2={v2}"
+
+
 def _routing_mode_line(settings: Settings) -> str:
     if not settings.v2_enabled:
         return "Routing: V1 only"
@@ -32,6 +43,7 @@ async def main() -> None:
     settings.validate_for_runtime()  # Validates BOT_TOKEN in non-CI environments
     # Гарантированно инициализируем БД до регистрации хендлеров и polling
     init_db(settings)
+    logger.info(_boot_version_line())
     logger.info("Bot started, DB initialized")
     logger.info(_routing_mode_line(settings))
 

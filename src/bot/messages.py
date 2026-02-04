@@ -541,6 +541,39 @@ V2_MOD_APPROVED_LABEL = "Одобрено."
 V2_MOD_NEEDS_FIX_LABEL = "На доработку."
 V2_MOD_REJECTED_LABEL = "Отклонено."
 
+# New Menu Card (m:* namespace)
+V2_MENU_CARD_TITLE = """🏠 Главное меню
+
+Выберите раздел:"""
+
+V2_MENU_STEP_SCREEN = """📌 Текущий шаг
+
+{step_info}"""
+
+V2_MENU_STEP_NO_ACTIVE = """Нет активного заполнения. Начните с «Создать проект» или «Начать заново»."""
+
+V2_MENU_PROJECT_SCREEN = """📁 Проект
+
+Доступные действия:"""
+
+V2_MENU_RESTART_CONFIRM_TEXT = """🧭 Начать заново?
+
+Текущий прогресс будет сброшен. Продолжить?"""
+
+V2_MENU_CLOSED = """Меню закрыто."""
+
+V2_MENU_HELP_SCREEN = """❓ Помощь / Команды
+
+/start — главное меню
+/menu — открыть меню
+/resume — продолжить заполнение
+/catalog — каталог проектов
+/request — оставить заявку
+/my_requests — мои заявки
+/leads — мои лиды (продавцам)"""
+
+V2_MENU_RESTART_DONE = """✅ Прогресс сброшен. Можете начать заполнение заново."""
+
 COPY_IDS = [
     "START_MESSAGE",
     "SUBMIT_START",
@@ -739,6 +772,14 @@ COPY_IDS = [
     "V2_MOD_APPROVED_LABEL",
     "V2_MOD_NEEDS_FIX_LABEL",
     "V2_MOD_REJECTED_LABEL",
+    "V2_MENU_CARD_TITLE",
+    "V2_MENU_STEP_SCREEN",
+    "V2_MENU_STEP_NO_ACTIVE",
+    "V2_MENU_PROJECT_SCREEN",
+    "V2_MENU_RESTART_CONFIRM_TEXT",
+    "V2_MENU_CLOSED",
+    "V2_MENU_HELP_SCREEN",
+    "V2_MENU_RESTART_DONE",
     "V2_MENU_PERSISTENT_BTN",
     "V2_MENU_SCREEN_TITLE",
     "V2_MENU_CONTINUE_WIZARD",

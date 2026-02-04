@@ -1,390 +1,356 @@
 """
-V2 menu: persistent ☰ Меню button and cabinet from any state.
-High-priority router — catches menu triggers before wizard handlers.
+V2 Menu Card: single message + inline keyboard with edit_message_text.
 
-Mode concept:
-- FSMContext data["mode"] in {"wizard", "menu", "browse", "admin"}
-- Wizard state is preserved when entering menu mode
-- User can return to wizard from menu
+Callback namespace: m:* (m:root, m:step, m:project, m:help, m:close, etc.)
+Commands: /menu, text "🏠 Меню", "☰ Меню", "Меню"
 
-Callback namespace:
-- menu:* for menu actions (continue, preview, drafts, posts, settings, help)
-- wiz:* for wizard actions (handled in form.py)
-- post:* for publish/moderation actions (handled in moderation.py)
+UX:
+- /menu and "🏠 Меню" open main menu as a single card message
+- All interactions EDIT the same message (no new messages)
+- "✕ Закрыть" deletes the message or edits to "Меню закрыто"
+- Command buttons (m:cmd:*) call existing handlers and offer "В меню" button
+
+Sections:
+- 📌 Текущий шаг (m:step) - current wizard step info
+- 📁 Проект (m:project) - project commands screen
+- 🧭 Начать заново (m:restart) - restart wizard
+- 📄 Мои проекты (m:my_projects) - /catalog handler
+- ➕ Создать проект (m:create_project) - /request handler
+- ❓ Помощь/Команды (m:help) - help text
+- ✕ Закрыть (m:close) - close menu
 """
 import logging
 import uuid
-from typing import Literal
+from typing import Optional
 
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
-from src.bot.keyboards import (
-    persistent_reply_kb,
-    cabinet_menu_inline_kb,
-    menu_back_kb,
-    drafts_list_kb,
-    publications_list_kb,
-    CB_MENU,
-)
+from src.bot.keyboards import persistent_reply_kb
 from src.bot.messages import get_copy
+from src.v2.keyboards.menu import (
+    kb_main_menu,
+    kb_back_close,
+    kb_project_screen,
+    kb_restart_confirm_new,
+    kb_to_menu_only,
+)
 from src.v2.repo import (
     get_or_create_user,
     get_submission,
-    list_submissions_by_user,
     create_submission,
 )
 from src.v2.fsm.states import V2FormSteps
 from src.v2.fsm.steps import get_step, get_step_index, STEP_KEYS
-from src.bot.database.models import ProjectStatus
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
-# Mode type for FSMContext data
-ModeType = Literal["wizard", "menu", "browse", "admin"]
+# Callback prefix
+CB_PREFIX = "m"
 
 # FSMContext data keys
-DATA_MODE = "mode"
 DATA_SUBMISSION_ID = "submission_id"
 DATA_STEP_KEY = "current_step_key"
-DATA_SAVED_STEP = "saved_wizard_step"
+DATA_MENU_MSG_ID = "menu_msg_id"  # Track menu message for edits
 
 
 # =============================================================================
-# Helper functions
+# Helper: Get current step info
 # =============================================================================
 
-async def get_mode(state: FSMContext) -> ModeType:
-    """Get current mode from FSMContext data."""
-    data = await state.get_data()
-    return data.get(DATA_MODE, "wizard")
-
-
-async def set_mode(state: FSMContext, mode: ModeType) -> None:
-    """Set mode in FSMContext data."""
-    await state.update_data(**{DATA_MODE: mode})
-
-
-async def has_active_wizard(state: FSMContext) -> bool:
-    """Check if user has an active wizard session."""
+async def _get_step_info(state: FSMContext) -> str:
+    """Get current step info text for 📌 Текущий шаг screen."""
     data = await state.get_data()
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
-    return bool(sid and step_key)
-
-
-async def save_wizard_state(state: FSMContext) -> None:
-    """Save current wizard step before entering menu mode."""
-    data = await state.get_data()
-    step_key = data.get(DATA_STEP_KEY)
-    if step_key:
-        await state.update_data(**{DATA_SAVED_STEP: step_key})
-
-
-def _build_menu_status_text(
-    project_name: str | None,
-    step_key: str | None,
-    step_num: int,
-    total: int,
-) -> str:
-    """Build status line for menu screen."""
-    project = project_name or get_copy("V2_MENU_STATUS_NO_PROJECT").strip()
-    if step_key and get_step(step_key) and total > 0:
-        step_str = f"{step_num} из {total}"
-        progress = round(step_num / total * 100)
-    else:
-        step_str = "—"
-        progress = 0
+    
+    if not sid or not step_key:
+        return get_copy("V2_MENU_STEP_NO_ACTIVE")
+    
+    step = get_step(step_key)
+    if not step:
+        return get_copy("V2_MENU_STEP_NO_ACTIVE")
+    
+    # Get step number and total
+    step_num = get_step_index(step_key) + 1
+    total = len(STEP_KEYS)
+    progress = round(step_num / total * 100) if total > 0 else 0
+    
+    # Get project title if available
+    project_title = "—"
+    try:
+        sub = await get_submission(uuid.UUID(sid))
+        if sub and sub.answers:
+            project_title = sub.answers.get("title", "").strip() or "—"
+    except (ValueError, TypeError):
+        pass
+    
+    # Build info text
+    prompt_text = step.get("prompt", "").split("\n")[0][:60]  # First line, truncated
     
     lines = [
-        f"📁 <b>{get_copy('V2_MENU_SCREEN_TITLE').strip()}</b>",
+        f"Проект: {project_title}",
+        f"Шаг: {step_num} из {total} ({progress}%)",
         "",
-        f"Проект: {project}",
+        f"Текущий вопрос:",
+        f"<i>{prompt_text}...</i>",
     ]
-    if step_key:
-        lines.append(f"Шаг: {step_str} ({progress}%)")
-    
     return "\n".join(lines)
 
 
-async def send_with_reply_kb(message: Message, text: str, **kwargs) -> Message:
-    """Send message with persistent reply keyboard."""
-    return await message.answer(text, reply_markup=persistent_reply_kb(), **kwargs)
-
-
 # =============================================================================
-# Main menu screen
+# Main Menu Card: open_main_menu
 # =============================================================================
 
-async def show_cabinet_menu(
+async def open_main_menu(
     target: Message | CallbackQuery,
     state: FSMContext,
-) -> None:
+    *,
+    is_edit: bool = False,
+) -> Optional[Message]:
     """
-    Show the main cabinet menu screen.
+    Open or edit main menu card.
     
-    - Displays status (project, step, progress) if wizard is active
-    - Shows inline keyboard with menu options
-    - Attaches persistent reply keyboard
+    Args:
+        target: Message or CallbackQuery
+        state: FSMContext
+        is_edit: If True, edit existing message. If False, send new message.
+    
+    Returns:
+        Sent/edited message or None
     """
-    message = target.message if isinstance(target, CallbackQuery) else target
     user_id = target.from_user.id if target.from_user else 0
+    logger.info("open_main_menu user_id=%s is_edit=%s", user_id, is_edit)
     
-    # Save wizard state before entering menu
-    await save_wizard_state(state)
-    await set_mode(state, "menu")
+    text = get_copy("V2_MENU_CARD_TITLE")
+    kb = kb_main_menu()
     
-    data = await state.get_data()
-    sid = data.get(DATA_SUBMISSION_ID)
-    step_key = data.get(DATA_STEP_KEY) or ""
-    
-    # Gather info for status display
-    step_num, total = 1, len(STEP_KEYS)
-    project_name = None
-    has_wizard = bool(sid and step_key)
-    
-    if sid:
-        try:
-            sub = await get_submission(uuid.UUID(sid))
-            if sub:
-                project_name = (sub.answers or {}).get("title", "").strip() or None
-                if step_key and get_step(step_key):
-                    step_num = get_step_index(step_key) + 1
-        except (ValueError, TypeError):
-            pass
-    
-    # Check if user has drafts/publications
-    has_drafts = False
-    has_publications = False
-    try:
-        user = await get_or_create_user(
-            user_id,
-            target.from_user.username if target.from_user else None,
-            target.from_user.full_name if target.from_user else None,
+    if isinstance(target, CallbackQuery):
+        message = target.message
+        if is_edit and message:
+            try:
+                await message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                return message
+            except Exception:
+                pass
+        # Fallback: answer new message
+        if message:
+            msg = await message.answer(text, reply_markup=kb, parse_mode="HTML")
+            await state.update_data(**{DATA_MENU_MSG_ID: msg.message_id})
+            return msg
+    else:
+        msg = await target.answer(text, reply_markup=kb, parse_mode="HTML")
+        await state.update_data(**{DATA_MENU_MSG_ID: msg.message_id})
+        # Also send persistent keyboard hint
+        await target.answer(
+            get_copy("V2_MENU_HINT").strip(),
+            reply_markup=persistent_reply_kb(),
         )
-        subs = await list_submissions_by_user(user.id, limit=10)
-        for s in subs:
-            if s.status == ProjectStatus.draft:
-                has_drafts = True
-            elif s.status == ProjectStatus.approved:
-                has_publications = True
-    except Exception:
-        pass
+        return msg
     
-    # Build menu text
-    status_text = _build_menu_status_text(project_name, step_key, step_num, total)
-    
-    # Build inline keyboard
-    kb = cabinet_menu_inline_kb(
-        has_active_wizard=has_wizard,
-        has_drafts=has_drafts,
-        has_publications=has_publications,
-    )
-    
-    # Send menu message with inline keyboard
-    await message.answer(status_text, reply_markup=kb, parse_mode="HTML")
-    
-    # Send persistent reply keyboard message
-    await message.answer(
-        get_copy("V2_MENU_HINT").strip(),
-        reply_markup=persistent_reply_kb(),
-    )
-    
-    logger.info("menu_open user_id=%s mode=menu", user_id)
+    return None
 
 
 # =============================================================================
-# Menu trigger handlers (text "☰ Меню", "🏠 Меню", "Меню", /menu)
+# Menu Triggers: /menu, "🏠 Меню", "☰ Меню", "Меню"
 # =============================================================================
 
 @router.message(F.text.in_(["☰ Меню", "🏠 Меню", "Меню"]))
 @router.message(Command("menu"))
 async def handle_menu_trigger(message: Message, state: FSMContext) -> None:
-    """
-    Global escape hatch: show cabinet from any state.
-    Works from wizard steps, preview, anywhere.
-    Preserves draft (submission_id) so user can continue.
-    """
-    await show_cabinet_menu(message, state)
+    """Open main menu card from text button or /menu command."""
+    logger.info("menu_trigger user_id=%s", message.from_user.id if message.from_user else 0)
+    await open_main_menu(message, state, is_edit=False)
 
 
 # =============================================================================
-# Menu callback handlers (menu:*)
+# Callback: m:root (back to main menu)
 # =============================================================================
 
-@router.callback_query(F.data == f"{CB_MENU}:continue")
-async def cb_menu_continue(callback: CallbackQuery, state: FSMContext) -> None:
-    """Continue wizard: return to current/saved step."""
+@router.callback_query(F.data == f"{CB_PREFIX}:root")
+@router.callback_query(F.data == f"{CB_PREFIX}:back")
+async def cb_menu_root(callback: CallbackQuery, state: FSMContext) -> None:
+    """Return to main menu (edit current message)."""
     await callback.answer()
-    user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_continue user_id=%s", user_id)
-    
-    await set_mode(state, "wizard")
-    
-    # Use render_current_step to restore wizard
-    await render_current_step(callback.message, state)
+    logger.info("menu_action=root user_id=%s", callback.from_user.id if callback.from_user else 0)
+    await open_main_menu(callback, state, is_edit=True)
 
 
-@router.callback_query(F.data == f"{CB_MENU}:preview")
-async def cb_menu_preview(callback: CallbackQuery, state: FSMContext) -> None:
-    """Show preview from menu."""
+# =============================================================================
+# Callback: m:step (📌 Текущий шаг)
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:step")
+async def cb_menu_step(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show current step info (edit message)."""
+    await callback.answer()
+    logger.info("menu_action=step user_id=%s", callback.from_user.id if callback.from_user else 0)
+    
+    step_info = await _get_step_info(state)
+    text = get_copy("V2_MENU_STEP_SCREEN").format(step_info=step_info)
+    
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=kb_back_close(), parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb_back_close(), parse_mode="HTML")
+
+
+# =============================================================================
+# Callback: m:project (📁 Проект)
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:project")
+async def cb_menu_project(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show project commands screen (edit message)."""
+    await callback.answer()
+    logger.info("menu_action=project user_id=%s", callback.from_user.id if callback.from_user else 0)
+    
+    text = get_copy("V2_MENU_PROJECT_SCREEN")
+    
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=kb_project_screen(), parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb_project_screen(), parse_mode="HTML")
+
+
+# =============================================================================
+# Callback: m:restart (🧭 Начать заново)
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:restart")
+async def cb_menu_restart(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show restart confirmation (edit message)."""
+    await callback.answer()
+    logger.info("menu_action=restart user_id=%s", callback.from_user.id if callback.from_user else 0)
+    
+    text = get_copy("V2_MENU_RESTART_CONFIRM_TEXT")
+    
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=kb_restart_confirm_new(), parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb_restart_confirm_new(), parse_mode="HTML")
+
+
+@router.callback_query(F.data == f"{CB_PREFIX}:restart_yes")
+async def cb_menu_restart_yes(callback: CallbackQuery, state: FSMContext) -> None:
+    """Confirm restart: clear state and return to menu."""
     await callback.answer()
     user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_preview user_id=%s", user_id)
+    logger.info("menu_action=restart_yes user_id=%s", user_id)
     
+    # Clear wizard state but preserve menu_msg_id
     data = await state.get_data()
-    sid = data.get(DATA_SUBMISSION_ID)
+    menu_msg_id = data.get(DATA_MENU_MSG_ID)
+    await state.clear()
+    if menu_msg_id:
+        await state.update_data(**{DATA_MENU_MSG_ID: menu_msg_id})
     
-    if not sid:
-        await callback.message.answer(
-            get_copy("V2_MENU_NO_ACTIVE_WIZARD").strip(),
-            reply_markup=menu_back_kb(),
-        )
-        return
-    
-    # Delegate to preview router
-    from src.v2.routers.preview import show_preview
-    await set_mode(state, "wizard")
-    await show_preview(callback.message, state)
+    # Show confirmation then return to menu
+    if callback.message:
+        text = get_copy("V2_MENU_RESTART_DONE")
+        await callback.message.edit_text(text, reply_markup=kb_to_menu_only(), parse_mode="HTML")
 
 
-@router.callback_query(F.data == f"{CB_MENU}:drafts")
-async def cb_menu_drafts(callback: CallbackQuery, state: FSMContext) -> None:
-    """Show drafts list."""
+# =============================================================================
+# Callback: m:my_projects (📄 Мои проекты) -> /catalog
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:my_projects")
+async def cb_menu_my_projects(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Show catalog (existing /catalog handler logic).
+    Sends new message with catalog, then offers "В меню" button.
+    """
     await callback.answer()
     user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_drafts user_id=%s", user_id)
+    logger.info("menu_action=my_projects user_id=%s", user_id)
     
-    try:
-        user = await get_or_create_user(
-            user_id,
-            callback.from_user.username if callback.from_user else None,
-            callback.from_user.full_name if callback.from_user else None,
+    # Close menu card
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            try:
+                await callback.message.edit_text(get_copy("V2_MENU_CLOSED"), reply_markup=None)
+            except Exception:
+                pass
+    
+    # Call existing catalog logic
+    from src.bot.services import list_approved_projects
+    from src.bot.renderer import render_project_post
+    
+    await get_or_create_user(
+        user_id,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
+    )
+    
+    projects = await list_approved_projects()
+    if not projects:
+        text = get_copy("CATALOG_HEADER") + get_copy("CATALOG_EMPTY")
+        await callback.message.answer(text, reply_markup=kb_to_menu_only())
+        return
+    
+    header = get_copy("CATALOG_HEADER")
+    parts = [header]
+    for p in projects:
+        parts.append(
+            render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
         )
-        subs = await list_submissions_by_user(user.id, limit=10)
-        drafts = [
-            (
-                (s.answers or {}).get("title", "") or "Без названия",
-                str(s.id),
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await callback.message.answer(header)
+        for p in projects:
+            await callback.message.answer(
+                render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
             )
-            for s in subs
-            if s.status == ProjectStatus.draft
-        ]
-    except Exception:
-        drafts = []
-    
-    if not drafts:
-        await callback.message.answer(
-            f"<b>{get_copy('V2_DRAFTS_HEADER').strip()}</b>\n\n{get_copy('V2_DRAFTS_EMPTY').strip()}",
-            reply_markup=menu_back_kb(),
-            parse_mode="HTML",
-        )
-        return
-    
-    text = f"<b>{get_copy('V2_DRAFTS_HEADER').strip()}</b>\n\nВыберите черновик:"
-    await callback.message.answer(
-        text,
-        reply_markup=drafts_list_kb(drafts),
-        parse_mode="HTML",
-    )
+        await callback.message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await callback.message.answer(text, reply_markup=kb_to_menu_only())
 
 
-@router.callback_query(F.data == f"{CB_MENU}:posts")
-async def cb_menu_posts(callback: CallbackQuery, state: FSMContext) -> None:
-    """Show publications list."""
+# =============================================================================
+# Callback: m:create_project (➕ Создать проект) -> /request
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:create_project")
+async def cb_menu_create_project(callback: CallbackQuery, state: FSMContext) -> None:
+    """
+    Start new project (existing request handler logic).
+    """
     await callback.answer()
     user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_posts user_id=%s", user_id)
+    logger.info("menu_action=create_project user_id=%s", user_id)
     
-    try:
-        user = await get_or_create_user(
-            user_id,
-            callback.from_user.username if callback.from_user else None,
-            callback.from_user.full_name if callback.from_user else None,
-        )
-        subs = await list_submissions_by_user(user.id, limit=10)
-        publications = [
-            (
-                (s.answers or {}).get("title", "") or "Без названия",
-                str(s.id),
-            )
-            for s in subs
-            if s.status == ProjectStatus.approved
-        ]
-    except Exception:
-        publications = []
+    # Close menu card
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            try:
+                await callback.message.edit_text(get_copy("V2_MENU_CLOSED"), reply_markup=None)
+            except Exception:
+                pass
     
-    if not publications:
-        await callback.message.answer(
-            f"<b>{get_copy('V2_PUBLICATIONS_HEADER').strip()}</b>\n\n{get_copy('V2_PUBLICATIONS_EMPTY').strip()}",
-            reply_markup=menu_back_kb(),
-            parse_mode="HTML",
-        )
-        return
-    
-    text = f"<b>{get_copy('V2_PUBLICATIONS_HEADER').strip()}</b>\n\nВаши публикации:"
-    await callback.message.answer(
-        text,
-        reply_markup=publications_list_kb(publications),
-        parse_mode="HTML",
-    )
-
-
-@router.callback_query(F.data == f"{CB_MENU}:settings")
-async def cb_menu_settings(callback: CallbackQuery, state: FSMContext) -> None:
-    """Show settings (placeholder)."""
-    await callback.answer()
-    logger.info("menu_settings user_id=%s", callback.from_user.id if callback.from_user else 0)
-    
-    await callback.message.answer(
-        f"<b>{get_copy('V2_SETTINGS_HEADER').strip()}</b>\n\n{get_copy('V2_SETTINGS_PLACEHOLDER').strip()}",
-        reply_markup=menu_back_kb(),
-        parse_mode="HTML",
-    )
-
-
-@router.callback_query(F.data == f"{CB_MENU}:help")
-async def cb_menu_help(callback: CallbackQuery, state: FSMContext) -> None:
-    """Show help text."""
-    await callback.answer()
-    logger.info("menu_help user_id=%s", callback.from_user.id if callback.from_user else 0)
-    
-    await callback.message.answer(
-        get_copy("V2_HELP_TEXT").strip(),
-        reply_markup=menu_back_kb(),
-    )
-
-
-@router.callback_query(F.data == f"{CB_MENU}:back_to_menu")
-async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext) -> None:
-    """Return to main menu from placeholder screens."""
-    await callback.answer()
-    await show_cabinet_menu(callback, state)
-
-
-@router.callback_query(F.data == f"{CB_MENU}:create")
-async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
-    """Create new project from menu."""
-    await callback.answer()
-    user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_create user_id=%s", user_id)
-    
+    # Start wizard (create new submission)
     user = await get_or_create_user(
         user_id,
         callback.from_user.username if callback.from_user else None,
         callback.from_user.full_name if callback.from_user else None,
     )
     
-    # Create new submission
     sub = await create_submission(user.id, current_step="q1")
     await state.update_data(**{
         DATA_SUBMISSION_ID: str(sub.id),
         DATA_STEP_KEY: "q1",
-        DATA_MODE: "wizard",
     })
     await state.set_state(V2FormSteps.answering)
     
@@ -396,255 +362,334 @@ async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
     )
     await show_question(callback.message, state, "q1")
     
-    logger.info("menu_create_done user_id=%s submission_id=%s", user_id, sub.id)
+    logger.info("create_project_done user_id=%s submission_id=%s", user_id, sub.id)
 
 
-@router.callback_query(F.data.startswith(f"{CB_MENU}:open_draft:"))
-async def cb_open_draft(callback: CallbackQuery, state: FSMContext) -> None:
-    """Open a draft from drafts list."""
+# =============================================================================
+# Callback: m:help (❓ Помощь/Команды)
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:help")
+async def cb_menu_help(callback: CallbackQuery, state: FSMContext) -> None:
+    """Show help text (edit message)."""
     await callback.answer()
+    logger.info("menu_action=help user_id=%s", callback.from_user.id if callback.from_user else 0)
     
-    try:
-        sid_str = callback.data.split(":", 2)[2]
-        sub_id = uuid.UUID(sid_str)
-    except (ValueError, IndexError):
-        await show_cabinet_menu(callback, state)
-        return
+    text = get_copy("V2_MENU_HELP_SCREEN")
     
-    sub = await get_submission(sub_id)
-    if not sub:
-        await show_cabinet_menu(callback, state)
-        return
-    
-    # Set as current submission and continue wizard
-    step_key = sub.current_step or "q1"
-    await state.update_data(**{
-        DATA_SUBMISSION_ID: str(sub.id),
-        DATA_STEP_KEY: step_key,
-        DATA_MODE: "wizard",
-    })
-    await state.set_state(V2FormSteps.answering)
-    
-    await render_current_step(callback.message, state)
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=kb_back_close(), parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb_back_close(), parse_mode="HTML")
 
 
-@router.callback_query(F.data.startswith(f"{CB_MENU}:view_post:"))
-async def cb_view_post(callback: CallbackQuery, state: FSMContext) -> None:
-    """View a publication."""
+# =============================================================================
+# Callback: m:close (✕ Закрыть)
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:close")
+async def cb_menu_close(callback: CallbackQuery, state: FSMContext) -> None:
+    """Close menu: delete message or edit to 'Меню закрыто'."""
     await callback.answer()
+    logger.info("menu_action=close user_id=%s", callback.from_user.id if callback.from_user else 0)
     
-    try:
-        sid_str = callback.data.split(":", 2)[2]
-        sub_id = uuid.UUID(sid_str)
-    except (ValueError, IndexError):
-        await show_cabinet_menu(callback, state)
-        return
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            try:
+                await callback.message.edit_text(
+                    get_copy("V2_MENU_CLOSED"),
+                    reply_markup=None,
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+
+# =============================================================================
+# Command Callbacks: m:cmd:* (call existing handlers)
+# =============================================================================
+
+@router.callback_query(F.data == f"{CB_PREFIX}:cmd:start")
+async def cb_cmd_start(callback: CallbackQuery, state: FSMContext) -> None:
+    """Call /start handler logic."""
+    await callback.answer()
+    logger.info("menu_action=cmd:start user_id=%s", callback.from_user.id if callback.from_user else 0)
     
-    sub = await get_submission(sub_id)
+    # Close menu and trigger start
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+    
+    # Call start cabinet
+    from src.v2.routers.start import show_v2_cabinet
+    await show_v2_cabinet(callback, state)
+
+
+@router.callback_query(F.data == f"{CB_PREFIX}:cmd:resume")
+async def cb_cmd_resume(callback: CallbackQuery, state: FSMContext) -> None:
+    """Call /resume handler logic."""
+    await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("menu_action=cmd:resume user_id=%s", user_id)
+    
+    # Close menu
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+    
+    # Resume logic
+    from src.v2.repo import get_active_submission
+    from src.v2.routers.form import show_question
+    from src.v2.routers.preview import show_preview
+    
+    await callback.message.answer(get_copy("V2_MENU_HINT").strip(), reply_markup=persistent_reply_kb())
+    
+    user = await get_or_create_user(
+        user_id,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
+    )
+    sub = await get_active_submission(user.id)
+    
     if not sub:
         await callback.message.answer(
-            "Публикация не найдена.",
-            reply_markup=menu_back_kb(),
+            get_copy("V2_MENU_STEP_NO_ACTIVE"),
+            reply_markup=kb_to_menu_only(),
         )
         return
     
-    # Render the post
-    from src.v2.rendering import render_submission_to_html
-    body_html = render_submission_to_html(sub.answers or {})
-    await callback.message.answer(
-        body_html,
-        reply_markup=menu_back_kb(),
-        parse_mode="HTML",
-    )
-
-
-# =============================================================================
-# Render current wizard step (helper for menu:continue and resume)
-# =============================================================================
-
-async def render_current_step(message: Message, state: FSMContext) -> None:
-    """
-    Render the current wizard step.
-    Reads current_step_key from state and shows the appropriate question.
-    Always attaches persistent reply keyboard.
-    """
-    data = await state.get_data()
-    sid = data.get(DATA_SUBMISSION_ID)
-    step_key = data.get(DATA_STEP_KEY) or data.get(DATA_SAVED_STEP)
+    await state.update_data(**{DATA_SUBMISSION_ID: str(sub.id)})
     
-    if not sid:
-        # No active wizard, show menu
-        await show_cabinet_menu(message, state)
+    current_step = sub.current_step
+    if current_step == "preview":
+        await state.set_state(V2FormSteps.answering)
+        await state.update_data(**{DATA_STEP_KEY: "preview"})
+        await show_preview(callback.message, state)
         return
     
-    if not step_key or not get_step(step_key):
-        # Try to get step from submission
+    if current_step and get_step(current_step):
+        await state.set_state(V2FormSteps.answering)
+        await state.update_data(**{DATA_STEP_KEY: current_step})
+        await show_question(callback.message, state, current_step)
+        return
+    
+    # Default to first step
+    await state.set_state(V2FormSteps.answering)
+    await state.update_data(**{DATA_STEP_KEY: "q1"})
+    await show_question(callback.message, state, "q1")
+
+
+@router.callback_query(F.data == f"{CB_PREFIX}:cmd:catalog")
+async def cb_cmd_catalog(callback: CallbackQuery, state: FSMContext) -> None:
+    """Call /catalog handler logic (same as m:my_projects)."""
+    await cb_menu_my_projects(callback, state)
+
+
+@router.callback_query(F.data == f"{CB_PREFIX}:cmd:request")
+async def cb_cmd_request(callback: CallbackQuery, state: FSMContext) -> None:
+    """Call /request handler logic (buyer request)."""
+    await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("menu_action=cmd:request user_id=%s", user_id)
+    
+    # Close menu
+    if callback.message:
         try:
-            sub = await get_submission(uuid.UUID(sid))
-            if sub and sub.current_step:
-                step_key = sub.current_step
-                await state.update_data(**{DATA_STEP_KEY: step_key})
-        except (ValueError, TypeError):
+            await callback.message.delete()
+        except Exception:
             pass
     
-    if not step_key or not get_step(step_key):
-        # Still no valid step, show first step
-        step_key = "q1"
-        await state.update_data(**{DATA_STEP_KEY: step_key})
+    # Start buyer request flow
+    from src.bot.fsm.states import BuyerRequestStates
     
-    # Set wizard mode
-    await set_mode(state, "wizard")
-    await state.set_state(V2FormSteps.answering)
+    await state.clear()
+    await get_or_create_user(
+        user_id,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
+    )
+    await state.set_state(BuyerRequestStates.what)
+    await callback.message.answer(get_copy("REQUEST_START"))
+    await callback.message.answer(get_copy("REQUEST_Q1_WHAT"))
+
+
+@router.callback_query(F.data == f"{CB_PREFIX}:cmd:my_requests")
+async def cb_cmd_my_requests(callback: CallbackQuery, state: FSMContext) -> None:
+    """Call /my_requests handler logic."""
+    await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("menu_action=cmd:my_requests user_id=%s", user_id)
     
-    # Handle preview step
-    if step_key == "preview":
-        from src.v2.routers.preview import show_preview
-        await show_preview(message, state)
+    # Close menu
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+    
+    # Call existing logic
+    from src.bot.services import list_my_requests_with_projects
+    from src.bot.renderer import render_buyer_request_summary, render_project_post
+    
+    user = await get_or_create_user(
+        user_id,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
+    )
+    
+    requests_list, leads_list, all_projects = await list_my_requests_with_projects(user.id)
+    
+    if not requests_list:
+        await callback.message.answer(
+            get_copy("MY_REQUESTS_HEADER") + get_copy("MY_REQUESTS_EMPTY"),
+            reply_markup=kb_to_menu_only(),
+        )
         return
     
-    # Show form step
-    from src.v2.routers.form import show_question
-    await message.answer(
-        get_copy("V2_MENU_HINT").strip(),
-        reply_markup=persistent_reply_kb(),
+    header = get_copy("MY_REQUESTS_HEADER")
+    lead_by_req: dict = {}
+    for lead in leads_list:
+        if lead.buyer_request_id:
+            lead_by_req.setdefault(lead.buyer_request_id, []).append(lead)
+    
+    parts = [header]
+    for req in requests_list:
+        parts.append(render_buyer_request_summary(req.what, req.budget, req.contact))
+        for lead in lead_by_req.get(req.id, []):
+            p = all_projects.get(lead.project_id)
+            if p:
+                parts.append(
+                    render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                )
+    
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await callback.message.answer(header)
+        for req in requests_list:
+            await callback.message.answer(render_buyer_request_summary(req.what, req.budget, req.contact))
+            for lead in lead_by_req.get(req.id, []):
+                p = all_projects.get(lead.project_id)
+                if p:
+                    await callback.message.answer(
+                        render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                    )
+        await callback.message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await callback.message.answer(text, reply_markup=kb_to_menu_only())
+
+
+@router.callback_query(F.data == f"{CB_PREFIX}:cmd:leads")
+async def cb_cmd_leads(callback: CallbackQuery, state: FSMContext) -> None:
+    """Call /leads handler logic."""
+    await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("menu_action=cmd:leads user_id=%s", user_id)
+    
+    # Close menu
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+    
+    # Call existing logic
+    from src.bot.services import list_leads_for_seller
+    from src.bot.renderer import render_project_post
+    
+    user = await get_or_create_user(
+        user_id,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
     )
-    await show_question(message, state, step_key)
+    
+    my_projects, leads_list = await list_leads_for_seller(user.id)
+    
+    if not my_projects or not leads_list:
+        await callback.message.answer(
+            get_copy("LEADS_HEADER") + get_copy("LEADS_EMPTY"),
+            reply_markup=kb_to_menu_only(),
+        )
+        return
+    
+    header = get_copy("LEADS_HEADER")
+    proj_by_id = {p.id: p for p in my_projects}
+    parts = [header]
+    
+    for lead in leads_list:
+        p = proj_by_id.get(lead.project_id)
+        if p:
+            parts.append(render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact))
+    
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await callback.message.answer(header)
+        for lead in leads_list:
+            p = proj_by_id.get(lead.project_id)
+            if p:
+                await callback.message.answer(
+                    render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                )
+        await callback.message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await callback.message.answer(text, reply_markup=kb_to_menu_only())
 
 
 # =============================================================================
-# Legacy compatibility handlers (v2menu:* prefix)
+# Legacy callback handlers (backward compat for old menu:* namespace)
 # =============================================================================
 
-# Import old callbacks module for backward compat
-from src.v2.ui import callbacks as old_callbacks
-
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_RESUME))
-async def cb_legacy_resume(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:resume -> menu:continue"""
-    await callback.answer()
-    await cb_menu_continue(callback, state)
+@router.callback_query(F.data == "menu:back_to_menu")
+async def cb_legacy_back_to_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    """Legacy: menu:back_to_menu -> m:root"""
+    await cb_menu_root(callback, state)
 
 
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_RESTART))
-async def cb_legacy_restart(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:restart -> confirm restart."""
-    await callback.answer()
-    from src.v2.ui.keyboards import kb_restart_confirm
-    await callback.message.answer(
-        get_copy("V2_MENU_RESTART_CONFIRM").strip(),
-        reply_markup=kb_restart_confirm(),
-    )
+@router.callback_query(F.data == "menu:continue")
+async def cb_legacy_continue(callback: CallbackQuery, state: FSMContext) -> None:
+    """Legacy: menu:continue -> m:cmd:resume"""
+    await cb_cmd_resume(callback, state)
 
 
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_RESTART_YES))
-async def cb_legacy_restart_yes(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:restart_yes -> clear state and show menu."""
-    await callback.answer()
-    await state.clear()
-    logger.info("menu_restart_yes user_id=%s", callback.from_user.id if callback.from_user else 0)
-    await show_cabinet_menu(callback, state)
-
-
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_RESTART_NO))
-async def cb_legacy_restart_no(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:restart_no -> return to menu."""
-    await callback.answer()
-    await show_cabinet_menu(callback, state)
-
-
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_PROJECTS))
-async def cb_legacy_projects(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:projects -> drafts."""
-    await cb_menu_drafts(callback, state)
-
-
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_CREATE))
+@router.callback_query(F.data == "menu:create")
 async def cb_legacy_create(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:create -> create."""
-    await cb_menu_create(callback, state)
+    """Legacy: menu:create -> m:create_project"""
+    await cb_menu_create_project(callback, state)
 
 
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_HELP))
+@router.callback_query(F.data == "menu:help")
 async def cb_legacy_help(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:help -> help."""
+    """Legacy: menu:help -> m:help"""
     await cb_menu_help(callback, state)
 
 
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_CURRENT_STEP))
-async def cb_legacy_current_step(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:current_step -> continue wizard."""
-    await cb_menu_continue(callback, state)
+@router.callback_query(F.data == "menu:drafts")
+async def cb_legacy_drafts(callback: CallbackQuery, state: FSMContext) -> None:
+    """Legacy: menu:drafts -> m:my_projects"""
+    await cb_menu_my_projects(callback, state)
 
 
-@router.callback_query(F.data == old_callbacks.menu(old_callbacks.MENU_PROJECT))
-async def cb_legacy_project(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy: v2menu:project -> preview."""
-    await cb_menu_preview(callback, state)
+@router.callback_query(F.data == "menu:posts")
+async def cb_legacy_posts(callback: CallbackQuery, state: FSMContext) -> None:
+    """Legacy: menu:posts -> m:my_projects"""
+    await cb_menu_my_projects(callback, state)
 
 
-# Legacy delete handlers (keep for backward compat)
-@router.callback_query(F.data.startswith(old_callbacks.menu(old_callbacks.MENU_DELETE) + ":"))
-async def cb_legacy_delete(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy delete confirmation."""
-    await callback.answer()
-    from src.v2.ui.keyboards import delete_confirm_kb
-    from src.v2.ui import copy
-    
-    try:
-        sid_str = callback.data.split(":", 2)[2]
-        sub_id = uuid.UUID(sid_str)
-    except (ValueError, IndexError):
-        await show_cabinet_menu(callback, state)
-        return
-    
-    user = await get_or_create_user(
-        callback.from_user.id if callback.from_user else 0,
-        callback.from_user.username if callback.from_user else None,
-        callback.from_user.full_name if callback.from_user else None,
-    )
-    sub = await get_submission(sub_id)
-    if not sub or sub.user_id != user.id:
-        await show_cabinet_menu(callback, state)
-        return
-    
-    title = (sub.answers or {}).get("title", "Без названия") or "Без названия"
-    confirm_text = get_copy("V2_DELETE_CONFIRM").format(title=title[:50])
-    await callback.message.answer(
-        confirm_text,
-        reply_markup=delete_confirm_kb(sub_id),
-    )
+@router.callback_query(F.data == "menu:settings")
+async def cb_legacy_settings(callback: CallbackQuery, state: FSMContext) -> None:
+    """Legacy: menu:settings -> show help (settings not implemented)."""
+    await cb_menu_help(callback, state)
 
 
-@router.callback_query(F.data.startswith(old_callbacks.menu(old_callbacks.MENU_DELETE_YES) + ":"))
-async def cb_legacy_delete_yes(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy delete yes."""
-    await callback.answer()
-    from src.v2.repo import delete_submission
-    
-    try:
-        sid_str = callback.data.split(":", 2)[2]
-        sub_id = uuid.UUID(sid_str)
-    except (ValueError, IndexError):
-        await show_cabinet_menu(callback, state)
-        return
-    
-    user = await get_or_create_user(
-        callback.from_user.id if callback.from_user else 0,
-        callback.from_user.username if callback.from_user else None,
-        callback.from_user.full_name if callback.from_user else None,
-    )
-    deleted = await delete_submission(sub_id, user.id)
-    if deleted:
-        data = await state.get_data()
-        if data.get(DATA_SUBMISSION_ID) == str(sub_id):
-            await state.update_data(**{DATA_SUBMISSION_ID: None, DATA_STEP_KEY: None})
-        await callback.message.answer(get_copy("V2_DELETED").strip())
-    await show_cabinet_menu(callback, state)
-
-
-@router.callback_query(F.data.startswith(old_callbacks.menu(old_callbacks.MENU_DELETE_NO) + ":"))
-async def cb_legacy_delete_no(callback: CallbackQuery, state: FSMContext) -> None:
-    """Legacy delete no."""
-    await callback.answer()
-    await callback.message.answer(get_copy("V2_DELETE_CANCELLED").strip())
-    await show_cabinet_menu(callback, state)
+@router.callback_query(F.data == "menu:preview")
+async def cb_legacy_preview(callback: CallbackQuery, state: FSMContext) -> None:
+    """Legacy: menu:preview -> m:cmd:resume (shows preview if at preview step)."""
+    await cb_cmd_resume(callback, state)

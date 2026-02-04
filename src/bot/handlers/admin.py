@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from aiogram import F, Router
@@ -18,6 +19,36 @@ from src.v2.rendering import project_to_feed_answers, render_for_feed
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Version info (for debugging deployments)
+# =============================================================================
+
+def get_version_info() -> dict[str, str]:
+    """Get version info from environment variables."""
+    return {
+        "git_sha": os.getenv("GIT_SHA", "unknown"),
+        "git_branch": os.getenv("GIT_BRANCH", "unknown"),
+        "build_time": os.getenv("BUILD_TIME", "unknown"),
+        "environment": os.getenv("APP_ENV", "unknown"),
+        "v2_enabled": os.getenv("V2_ENABLED", "false"),
+    }
+
+
+@router.message(Command("version"))
+async def cmd_version(message: Message) -> None:
+    """Show version info — available to everyone for deployment verification."""
+    info = get_version_info()
+    text = (
+        "<b>🔧 Version Info</b>\n\n"
+        f"<b>SHA:</b> <code>{info['git_sha']}</code>\n"
+        f"<b>Branch:</b> {info['git_branch']}\n"
+        f"<b>Build:</b> {info['build_time']}\n"
+        f"<b>Env:</b> {info['environment']}\n"
+        f"<b>V2:</b> {info['v2_enabled']}"
+    )
+    await message.answer(text, parse_mode="HTML")
 
 
 def _is_admin(telegram_id: int) -> bool:

@@ -31,6 +31,10 @@ services:
       V2_CANARY_MODE: ${V2_CANARY_MODE:-false}
       V2_ALLOWLIST: ${V2_ALLOWLIST:-}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      # Version tracking for deployment verification
+      GIT_SHA: ${GIT_SHA:-unknown}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      BUILD_TIME: ${BUILD_TIME:-unknown}
     env_file:
       - .env
     command: ["/app/scripts/entrypoint.sh"]
