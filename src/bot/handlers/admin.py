@@ -104,8 +104,13 @@ async def admin_needs_fix(callback: CallbackQuery) -> None:
     if not _is_admin(callback.from_user.id if callback.from_user else 0):
         await callback.answer()
         return
-    project_id = callback.data.replace("mod_fix_", "")
-    await update_project_status(uuid.UUID(project_id), ProjectStatus.needs_fix)
+    project_id_str = callback.data.replace("mod_fix_", "")
+    try:
+        project_id = uuid.UUID(project_id_str)
+    except ValueError:
+        await callback.answer()
+        return
+    await update_project_status(project_id, ProjectStatus.needs_fix)
     if callback.message:
         await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(get_copy("ADMIN_NEEDS_FIX"))
@@ -117,8 +122,13 @@ async def admin_reject(callback: CallbackQuery) -> None:
     if not _is_admin(callback.from_user.id if callback.from_user else 0):
         await callback.answer()
         return
-    project_id = callback.data.replace("mod_reject_", "")
-    await update_project_status(uuid.UUID(project_id), ProjectStatus.rejected)
+    project_id_str = callback.data.replace("mod_reject_", "")
+    try:
+        project_id = uuid.UUID(project_id_str)
+    except ValueError:
+        await callback.answer()
+        return
+    await update_project_status(project_id, ProjectStatus.rejected)
     if callback.message:
         await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(get_copy("ADMIN_REJECT"))

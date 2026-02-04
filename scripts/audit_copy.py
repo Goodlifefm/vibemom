@@ -3,7 +3,6 @@
 Audit: fail if Cyrillic user-facing text exists outside messages.py.
 Fail if any COPY_ID referenced in FSM (SPEC 03, 04) does not exist in messages.py.
 """
-import ast
 import re
 import sys
 from pathlib import Path

@@ -1,14 +1,9 @@
 from src.bot.validators import (
     validate_title,
-    validate_description,
-    validate_stack,
     validate_url,
     validate_url_or_empty,
     validate_max_len,
-    validate_price,
     validate_contact,
-    validate_what,
-    validate_budget,
     parse_yes_no,
 )
 

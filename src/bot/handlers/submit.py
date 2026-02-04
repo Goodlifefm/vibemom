@@ -11,7 +11,6 @@ from src.bot.keyboards import ps_resume_kb, admin_moderate_kb
 from src.bot.submission_engine import (
     get_schema,
     get_current_step,
-    get_current_step_id,
     set_answer,
     set_step_id,
     validate_input,
@@ -86,7 +85,6 @@ async def submit_text(message: Message, state: FSMContext) -> None:
         return
 
     text_in = (message.text or "").strip()
-    state_id = step["state_id"]
     input_type = step.get("input_type") or ""
 
     # Buttons-only step: ignore text, re-send step with keyboard
@@ -120,7 +118,7 @@ async def submit_text(message: Message, state: FSMContext) -> None:
         return
 
     # Confirm step: yes/no
-    if state_id == "confirm":
+    if step["state_id"] == "confirm":
         yn = parse_yes_no(message.text)
         if yn is True:
             await _do_submit(message, state, data)
@@ -150,7 +148,7 @@ async def submit_text(message: Message, state: FSMContext) -> None:
     answer_key = step.get("answer_key")
     if answer_key:
         data = set_answer(data, answer_key, value)
-    next_sid = transition(step, "next")
+    next_sid = transition(step, "next", value)
     if next_sid == "__submit__":
         await _do_submit(message, state, data)
         return
@@ -173,7 +171,6 @@ async def submit_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     action = callback.data.split(":", 1)[1] if ":" in callback.data else ""
-    state_id = step["state_id"]
 
     if action == "save":
         await callback.message.answer(get_copy("SAVE_DRAFT_OK"), reply_markup=ps_resume_kb())

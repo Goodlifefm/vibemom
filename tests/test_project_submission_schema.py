@@ -1,6 +1,5 @@
 """Tests for project submission schema (SPEC 03)."""
 
-import pytest
 
 from src.bot.project_submission_schema import (
     STEPS,

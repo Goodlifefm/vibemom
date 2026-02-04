@@ -13,8 +13,6 @@ from src.bot.renderer import project_fields_to_answers, v2_answers_to_project_fi
 from src.bot.services.project_service import get_project, update_project_fields
 from src.bot.editor_schema import (
     BLOCKS,
-    FIELDS,
-    get_block,
     get_field,
     get_fields_by_block,
     required_field_ids,
@@ -74,7 +72,8 @@ async def ed_guided(callback: CallbackQuery, state: FSMContext) -> None:
     parts = callback.data.split(":", 3)
     pid = parts[3] if len(parts) > 3 else (await state.get_data()).get("project_id")
     if not pid:
-        await show_block_menu(callback, state, uuid.uuid4())
+        from src.bot.handlers.cabinet import show_cabinet
+        await show_cabinet(callback, state)
         return
     try:
         project_id = uuid.UUID(pid)
@@ -172,10 +171,16 @@ async def _send_field_question(message: Message, field: dict, guided: bool = Fal
     data = (await state.get_data()) if state else {}
     answers = data.get("answers") or {}
     pid = data.get("project_id") or ""
+    if not pid:
+        from src.bot.handlers.cabinet import show_cabinet
+        await show_cabinet(message, state)
+        return
     try:
-        project_id = uuid.UUID(pid) if pid else uuid.uuid4()
+        project_id = uuid.UUID(pid)
     except ValueError:
-        project_id = uuid.uuid4()
+        from src.bot.handlers.cabinet import show_cabinet
+        await show_cabinet(message, state)
+        return
     text = get_copy(field["copy_id"])
     if field.get("input_type") == "multi_choice":
         current = answers.get("channels", [])
@@ -359,8 +364,12 @@ async def ed_skip(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     pid = data.get("project_id")
     field_id = data.get("editing_field_id")
-    if not pid or not field_id:
-        await show_block_menu(callback, state, uuid.UUID(pid) if pid else uuid.uuid4())
+    if not pid:
+        from src.bot.handlers.cabinet import show_cabinet
+        await show_cabinet(callback, state)
+        return
+    if not field_id:
+        await show_block_menu(callback, state, uuid.UUID(pid))
         return
     field = get_field(field_id)
     if not field or not field.get("skippable"):

@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from src.bot.config import Settings
 from src.bot.messages import get_copy
 from src.v2.repo import get_submission, submit_for_moderation, get_user_by_id
-from src.v2.rendering import render_post, render_submission_to_html
+from src.v2.rendering import render_post
 
 router = Router()
 PREFIX = "v2preview"

@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest, Teleg
 
 from src.bot.config import Settings
 from src.bot.messages import get_copy
-from src.bot.database.models import ProjectStatus, AdminActionType, Submission
+from src.bot.database.models import ProjectStatus, AdminActionType
 from src.v2.repo import (
     get_submission,
     get_user_by_id,

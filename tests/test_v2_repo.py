@@ -1,7 +1,6 @@
 """Step 3 verification: V2 repo layer (get_or_create_user, submission, log_admin_action)."""
 import inspect
 
-import pytest
 
 from src.v2.repo import (
     get_or_create_user,

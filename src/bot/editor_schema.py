@@ -13,7 +13,6 @@ Maps to project columns (title, description, stack, link, price, contact) for DB
 """
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
 # Validator registry (filled from validators module)

@@ -115,6 +115,9 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
     answer_key = step_def["answer_key"]
     if is_multi_link(step_key):
         sub = await get_submission(sub_id)
+        if sub is None:
+            await message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
+            return
         answers = dict(sub.answers or {})
         links = list(answers.get("links") or [])
         links.append(text)

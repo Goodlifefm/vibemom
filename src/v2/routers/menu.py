@@ -16,7 +16,6 @@ from src.bot.keyboards import (
 )
 from src.v2.repo import (
     get_or_create_user,
-    get_active_submission,
     get_submission,
     list_submissions_by_user,
     create_submission,
@@ -127,7 +126,6 @@ async def cb_menu_restart(callback: CallbackQuery, state: FSMContext) -> None:
 async def cb_menu_restart_yes(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.clear()
-    from src.v2.routers.start import show_v2_cabinet
     logger.info("menu_restart_yes user_id=%s", callback.from_user.id if callback.from_user else 0)
     await show_menu_cabinet(callback.message, state)
 

@@ -1,10 +1,8 @@
 """Tests for V2 editor_schema: integrity, copy_id, missing_required_fields, is_field_filled."""
 
-import pytest
 
 from src.bot.editor_schema import (
     BLOCKS,
-    FIELDS,
     get_block,
     get_field,
     get_fields_by_block,

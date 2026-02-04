@@ -14,7 +14,6 @@ from src.bot.services.project_service import (
     get_project,
     update_project_status,
     update_project_fields,
-    list_projects_by_seller,
 )
 from src.bot.database.models import ProjectStatus
 from src.bot.keyboards import admin_moderate_kb
@@ -147,8 +146,6 @@ async def dash_send(callback: CallbackQuery, state: FSMContext) -> None:
         price=v2_fields["price"],
         contact=v2_fields["contact"],
     )
-    from src.bot.handlers import admin
-    from src.bot.services import get_or_create_user
     settings = Settings()
     admin_chat_id = (settings.admin_chat_id or "").strip()
     await update_project_status(project.id, ProjectStatus.pending)

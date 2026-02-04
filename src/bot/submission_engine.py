@@ -67,12 +67,17 @@ def validate_input(step: dict[str, Any], text: str | None) -> tuple[bool, Any]:
     return fn(text)
 
 
-def transition(step: dict[str, Any], action: str) -> str | None:
+def transition(step: dict[str, Any], action: str, answer_value: Any = None) -> str | None:
     """action: 'next' | 'back' | 'skip'. Returns next state_id or __submit__."""
     if action == "back":
         return step.get("back_id")
     if action == "skip":
         return step.get("skip_id") or step.get("next_id")
+    if action == "next" and step.get("state_id") == "author_contact_type" and answer_value is not None:
+        val = str(answer_value).strip().lower()
+        if val in ("email", "e-mail"):
+            return "author_email"
+        return "author_telegram"
     return step.get("next_id")
 
 
