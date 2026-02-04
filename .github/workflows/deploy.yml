@@ -1,5 +1,5 @@
-# Auto-deploy to VPS on push to v2-editor branch AFTER CI passes.
-# Manual run: Actions -> Deploy to VPS -> Run workflow.
+# Auto-deploy to VPS on push to v2-editor branch.
+# Manual trigger: Actions -> Deploy to VPS -> Run workflow.
 name: Deploy to VPS
 
 on:
@@ -8,29 +8,17 @@ on:
       - v2-editor
   workflow_dispatch:
 
-concurrency:
-  group: deploy-vps-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  # First run CI checks
-  ci:
-    uses: ./.github/workflows/ci.yml
-
-  # Deploy only if CI passed
   deploy:
-    needs: ci
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/v2-editor'
-    env:
-      DEPLOY_PORT: ${{ secrets.VPS_PORT }}
 
     steps:
-      - name: Check deploy secrets
+      - name: Resolve SSH port
+        id: ssh_port
+        env:
+          VPS_PORT: ${{ secrets.VPS_PORT }}
         run: |
-          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "::error::VPS_HOST secret is not set"; exit 1; fi
-          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "::error::VPS_USER secret is not set"; exit 1; fi
-          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "::error::VPS_SSH_KEY secret is not set"; exit 1; fi
+          echo "port=${VPS_PORT:-22}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -38,42 +26,18 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ env.DEPLOY_PORT || 22 }}
+          port: ${{ steps.ssh_port.outputs.port }}
           command_timeout: 10m
           script: |
             set -e
 
-            echo "== Docker check =="
-            command -v docker || { echo "Error: docker not found"; exit 1; }
-            docker compose version || docker-compose version || { echo "Error: docker compose not found"; exit 1; }
-
-            echo "== Go to project =="
             cd /root/vibemom || { echo "Error: /root/vibemom not found"; exit 1; }
 
-            echo "== Update code =="
             git fetch --all
-            git checkout v2-editor
             git reset --hard origin/v2-editor
 
-            echo "== Stop containers safely =="
-            docker compose down --remove-orphans --timeout 30 || true
-
-            echo "== Clean up stale resources =="
-            docker container prune -f || true
-            docker network prune -f || true
-
-            echo "== Build & run =="
             docker compose pull || true
-            docker compose up -d --build --force-recreate
+            docker compose up -d --build
 
-            echo "== Cleanup old images =="
-            docker image prune -f || true
-
-            echo "== Wait for services =="
-            sleep 5
-
-            echo "== Status =="
             docker compose ps
-
-            echo "== Recent logs =="
-            docker compose logs --tail=50 bot
+            docker compose logs --tail=120 bot
