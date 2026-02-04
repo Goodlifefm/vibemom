@@ -7,13 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
-from src.bot.messages import get_copy
-from src.bot.keyboards import (
-    reply_menu_keyboard,
-    menu_cabinet_inline_kb,
-    menu_restart_confirm_kb,
-    MENU_PREFIX,
-)
+from src.v2.ui import callbacks, copy, keyboards, render
 from src.v2.repo import (
     get_or_create_user,
     get_submission,
@@ -30,32 +24,31 @@ router = Router()
 
 
 def _status_copy(status: ProjectStatus) -> str:
-    from src.bot.messages import get_copy
     m = {
-        ProjectStatus.draft: "V2_STATUS_DRAFT",
-        ProjectStatus.pending: "V2_STATUS_PENDING",
-        ProjectStatus.needs_fix: "V2_STATUS_NEEDS_FIX",
-        ProjectStatus.approved: "V2_STATUS_APPROVED",
-        ProjectStatus.rejected: "V2_STATUS_REJECTED",
+        ProjectStatus.draft: copy.STATUS_DRAFT,
+        ProjectStatus.pending: copy.STATUS_PENDING,
+        ProjectStatus.needs_fix: copy.STATUS_NEEDS_FIX,
+        ProjectStatus.approved: copy.STATUS_APPROVED,
+        ProjectStatus.rejected: copy.STATUS_REJECTED,
     }
-    return get_copy(m.get(status, "V2_STATUS_DRAFT")).strip()
+    return copy.t(m.get(status, copy.STATUS_DRAFT)).strip()
 
 
 async def _send_menu_keyboard(target: Message) -> None:
     """Send second message to set persistent reply keyboard."""
-    await target.answer(get_copy("V2_MENU_HINT"), reply_markup=reply_menu_keyboard())
+    await target.answer(copy.t(copy.MENU_HINT), reply_markup=keyboards.reply_menu_keyboard())
 
 
 def _cabinet_status_text(step_key: str | None, step_num: int, total: int, project_name: str | None) -> str:
-    """Текст блока кабинета: проект, шаг X из Y, прогресс в %."""
-    project = (project_name or "").strip() or get_copy("V2_MENU_STATUS_NO_PROJECT").strip()
+    """Cabinet status block: project name, step X/Y, progress %."""
+    project = (project_name or "").strip() or copy.t(copy.MENU_STATUS_NO_PROJECT).strip()
     if step_key and get_step(step_key) and total > 0:
         step_str = f"{step_num} из {total}"
         progress = round(step_num / total * 100)
     else:
-        step_str = "—"
+        step_str = copy.CARD_EMPTY_VALUE
         progress = 0
-    return get_copy("V2_CABINET_STATUS").format(project=project, step=step_str, progress=progress)
+    return copy.fmt(copy.CABINET_STATUS, project=project, step=step_str, progress=progress)
 
 
 async def show_menu_cabinet(message_or_callback: Message | CallbackQuery, state: FSMContext) -> None:
@@ -87,8 +80,8 @@ async def show_menu_cabinet(message_or_callback: Message | CallbackQuery, state:
         has_projects = bool(subs)
     except Exception:
         has_projects = False
-    kb = menu_cabinet_inline_kb(show_resume=show_resume, has_projects=has_projects)
-    body = status_text + "\n\n" + get_copy("V2_CABINET_GREETING")
+    kb = keyboards.menu_cabinet_inline_kb(show_resume=show_resume, has_projects=has_projects)
+    body = status_text + "\n\n" + copy.t(copy.CABINET_GREETING)
     await target.answer(body, reply_markup=kb)
     await _send_menu_keyboard(target)
     user_id = (message_or_callback.from_user.id if message_or_callback.from_user else 0) if hasattr(message_or_callback, "from_user") else 0
@@ -104,7 +97,7 @@ async def handle_menu_trigger(message: Message, state: FSMContext) -> None:
 
 
 # ---- Callback: Продолжить ----
-@router.callback_query(F.data == f"{MENU_PREFIX}:resume")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_RESUME))
 async def cb_menu_resume(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     from src.v2.routers.start import _do_resume
@@ -113,16 +106,16 @@ async def cb_menu_resume(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---- Callback: Начать заново (confirm) ----
-@router.callback_query(F.data == f"{MENU_PREFIX}:restart")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_RESTART))
 async def cb_menu_restart(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.answer(
-        get_copy("V2_MENU_RESTART_CONFIRM"),
-        reply_markup=menu_restart_confirm_kb(),
+        copy.t(copy.MENU_RESTART_CONFIRM),
+        reply_markup=keyboards.menu_restart_confirm_kb(),
     )
 
 
-@router.callback_query(F.data == f"{MENU_PREFIX}:restart_yes")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_RESTART_YES))
 async def cb_menu_restart_yes(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.clear()
@@ -130,14 +123,14 @@ async def cb_menu_restart_yes(callback: CallbackQuery, state: FSMContext) -> Non
     await show_menu_cabinet(callback.message, state)
 
 
-@router.callback_query(F.data == f"{MENU_PREFIX}:restart_no")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_RESTART_NO))
 async def cb_menu_restart_no(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await show_menu_cabinet(callback.message, state)
 
 
 # ---- Callback: Мои проекты ----
-@router.callback_query(F.data == f"{MENU_PREFIX}:projects")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_PROJECTS))
 async def cb_menu_projects(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     user = await get_or_create_user(
@@ -148,28 +141,25 @@ async def cb_menu_projects(callback: CallbackQuery, state: FSMContext) -> None:
     subs = await list_submissions_by_user(user.id, limit=5)
     if not subs:
         await callback.message.answer(
-            get_copy("V2_MY_PROJECTS_HEADER") + "\n\n" + get_copy("V2_MY_PROJECTS_EMPTY"),
-            reply_markup=menu_cabinet_inline_kb(show_resume=bool((await state.get_data()).get("submission_id")), has_projects=False),
+            copy.t(copy.MY_PROJECTS_HEADER) + "\n\n" + copy.t(copy.MY_PROJECTS_EMPTY),
+            reply_markup=keyboards.menu_cabinet_inline_kb(
+                show_resume=bool((await state.get_data()).get("submission_id")), has_projects=False
+            ),
         )
         return
-    text = get_copy("V2_MY_PROJECTS_HEADER") + "\n\n"
-    kb_rows = []
+    text = copy.t(copy.MY_PROJECTS_HEADER) + "\n\n"
+    projects: list[tuple[str, uuid.UUID]] = []
     for s in subs:
-        title = (s.answers or {}).get("title", "—") or "—"
-        if title == "—":
-            title = "Без названия"
+        title = (s.answers or {}).get("title", copy.CARD_EMPTY_VALUE) or copy.CARD_EMPTY_VALUE
+        if title == copy.CARD_EMPTY_VALUE:
+            title = copy.UNTITLED_PROJECT
         text += f"• {title[:40]} — {_status_copy(s.status)}\n"
-        from aiogram.types import InlineKeyboardButton
-        kb_rows.append([InlineKeyboardButton(
-            text=get_copy("V2_BTN_OPEN").strip() + f" ({title[:20]})",
-            callback_data=f"v2cab:open:{s.id}",
-        )])
-    from aiogram.types import InlineKeyboardMarkup
-    await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
+        projects.append((title, s.id))
+    await callback.message.answer(text, reply_markup=keyboards.projects_list_kb(projects))
 
 
 # ---- Callback: Создать проект ----
-@router.callback_query(F.data == f"{MENU_PREFIX}:create")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_CREATE))
 async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     user = await get_or_create_user(
@@ -187,97 +177,82 @@ async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---- Callback: Помощь ----
-@router.callback_query(F.data == f"{MENU_PREFIX}:help")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_HELP))
 async def cb_menu_help(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.answer(
-        get_copy("V2_HELP_TEXT"),
-        reply_markup=menu_cabinet_inline_kb(
+        copy.t(copy.HELP_TEXT),
+        reply_markup=keyboards.menu_cabinet_inline_kb(
             show_resume=bool((await state.get_data()).get("submission_id")),
             has_projects=True,
         ),
     )
 
 
-# ---- Callback: Текущий шаг (показать текст текущего шага) ----
-def _current_step_message_text(step_key: str) -> str | None:
-    """Текст текущего шага в едином шаблоне (как в форме)."""
-    from src.v2.format_step import format_step_message, parse_copy_to_parts
-    step_def = get_step(step_key)
-    if not step_def:
-        return None
-    idx = get_step_index(step_key)
-    total = len(STEP_KEYS)
-    copy_text = get_copy(step_def["copy_id"])
-    parts = parse_copy_to_parts(copy_text)
-    return format_step_message(
-        step_num=idx + 1,
-        total=total,
-        title=parts["title"],
-        intro=parts["intro"],
-        todo=parts["todo"],
-        example=parts["example"],
-    )
-
-
-@router.callback_query(F.data == f"{MENU_PREFIX}:current_step")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_CURRENT_STEP))
 async def cb_menu_current_step(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
     step_key = data.get("current_step_key") or ""
     if not step_key or not get_step(step_key):
         await callback.message.answer(
-            get_copy("V2_MENU_STATUS_NO_PROJECT"),
-            reply_markup=menu_cabinet_inline_kb(show_resume=bool(data.get("submission_id")), has_projects=True),
+            copy.t(copy.MENU_STATUS_NO_PROJECT),
+            reply_markup=keyboards.menu_cabinet_inline_kb(
+                show_resume=bool(data.get("submission_id")), has_projects=True
+            ),
         )
         return
-    text = _current_step_message_text(step_key)
+    answers = None
+    sid = data.get("submission_id")
+    if sid:
+        try:
+            sub = await get_submission(uuid.UUID(sid))
+            answers = sub.answers if sub else None
+        except (ValueError, TypeError):
+            answers = None
+    text = render.render_step(step_key, answers)
     if not text:
         return
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_copy("V2_MENU_CONTINUE").strip(), callback_data=f"{MENU_PREFIX}:resume")],
-    ])
-    await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await callback.message.answer(text, reply_markup=keyboards.menu_current_step_kb(), parse_mode="HTML")
 
 
 # ---- Callback: Проект (резюме / собранные данные) ----
-@router.callback_query(F.data == f"{MENU_PREFIX}:project")
+@router.callback_query(F.data == callbacks.menu(callbacks.MENU_PROJECT))
 async def cb_menu_project(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
     sid = data.get("submission_id")
     if not sid:
         await callback.message.answer(
-            get_copy("V2_PROJECT_NO_DATA"),
-            reply_markup=menu_cabinet_inline_kb(show_resume=False, has_projects=True),
+            copy.t(copy.PROJECT_NO_DATA),
+            reply_markup=keyboards.menu_cabinet_inline_kb(show_resume=False, has_projects=True),
         )
         return
     try:
         sub = await get_submission(uuid.UUID(sid))
     except (ValueError, TypeError):
         await callback.message.answer(
-            get_copy("V2_PROJECT_NO_DATA"),
-            reply_markup=menu_cabinet_inline_kb(show_resume=False, has_projects=True),
+            copy.t(copy.PROJECT_NO_DATA),
+            reply_markup=keyboards.menu_cabinet_inline_kb(show_resume=False, has_projects=True),
         )
         return
     if not sub:
         await callback.message.answer(
-            get_copy("V2_PROJECT_NO_DATA"),
-            reply_markup=menu_cabinet_inline_kb(show_resume=False, has_projects=True),
+            copy.t(copy.PROJECT_NO_DATA),
+            reply_markup=keyboards.menu_cabinet_inline_kb(show_resume=False, has_projects=True),
         )
         return
     answers = sub.answers or {}
     if not answers:
         await callback.message.answer(
-            get_copy("V2_PROJECT_NO_DATA"),
-            reply_markup=menu_cabinet_inline_kb(show_resume=True, has_projects=True),
+            copy.t(copy.PROJECT_NO_DATA),
+            reply_markup=keyboards.menu_cabinet_inline_kb(show_resume=True, has_projects=True),
         )
         return
     from src.v2.rendering import render_submission_to_html
     body_html = render_submission_to_html(answers)
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_copy("V2_MENU_CONTINUE").strip(), callback_data=f"{MENU_PREFIX}:resume")],
-    ])
-    await callback.message.answer(body_html, reply_markup=kb, parse_mode="HTML")
+    await callback.message.answer(
+        body_html,
+        reply_markup=keyboards.menu_current_step_kb(),
+        parse_mode="HTML",
+    )

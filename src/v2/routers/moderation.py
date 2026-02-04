@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest, TelegramNotFound
@@ -20,9 +20,11 @@ from src.v2.repo import (
 )
 from src.v2.fsm.states import V2ModSteps
 from src.v2.rendering import assert_preview_publish_consistency, render_post
+from src.v2.ui import V2_MOD_PREFIX, kb_moderation_user_fix
+from src.v2.ui.copy import V2Copy
 
 router = Router()
-PREFIX = "v2mod"
+PREFIX = V2_MOD_PREFIX
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +47,7 @@ def _parse_callback(data: str) -> tuple[str | None, uuid.UUID | None]:
 async def handle_mod_callback(callback: CallbackQuery, state: FSMContext) -> None:
     tid = callback.from_user.id if callback.from_user else 0
     if not _is_admin(tid):
-        await callback.answer(get_copy("V2_MOD_NO_RIGHTS"), show_alert=True)
+        await callback.answer(get_copy("V2_MOD_NO_RIGHTS"), show_alert=True)  # Keep get_copy for backward compat
         return
     action, sub_id = _parse_callback(callback.data or "")
     logger.info("button user_id=%s submission_id=%s step_id=mod action=%s", tid, str(sub_id) if sub_id else None, action)
@@ -88,7 +90,7 @@ async def handle_mod_callback(callback: CallbackQuery, state: FSMContext) -> Non
 
     if action == "approve":
         if sub.status != ProjectStatus.pending:
-            await callback.answer(get_copy("V2_MOD_ALREADY"), show_alert=True)
+            await callback.answer(get_copy("V2_MOD_ALREADY"), show_alert=True)  # Keep get_copy for backward compat
             return
         await set_moderated(sub_id, ProjectStatus.approved)
         await log_admin_action(admin_user.id, AdminActionType.approve, target_submission_id=sub_id)
@@ -157,14 +159,14 @@ async def handle_mod_callback(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.answer()
         await state.set_state(V2ModSteps.awaiting_fix_text)
         await state.update_data(mod_pending_sub_id=str(sub_id), mod_admin_chat_id=admin_chat_id, mod_admin_message_id=meta_msg_id)
-        await callback.message.answer(get_copy("V2_MOD_ASK_FIX"))
+        await callback.message.answer(V2Copy.get(V2Copy.MOD_ASK_FIX))
         return
 
     if action == "reject":
         await callback.answer()
         await state.set_state(V2ModSteps.awaiting_reject_reason)
         await state.update_data(mod_pending_sub_id=str(sub_id), mod_admin_chat_id=admin_chat_id, mod_admin_message_id=meta_msg_id)
-        await callback.message.answer(get_copy("V2_MOD_ASK_REJECT"))
+        await callback.message.answer(V2Copy.get(V2Copy.MOD_ASK_REJECT))
         return
 
 
@@ -196,10 +198,8 @@ async def handle_fix_text(message: Message, state: FSMContext) -> None:
     )
     await set_moderated(sub_id, ProjectStatus.needs_fix, fix_request=fix_request)
     await log_admin_action(admin_user.id, AdminActionType.needs_fix, target_submission_id=sub_id, comment=fix_request)
-    user_text = get_copy("V2_MOD_NEEDS_FIX_USER").format(fix_request=fix_request)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_copy("BTN_MAKE_EDIT").strip(), callback_data=f"v2fix:edit:{sid_str}")],
-    ])
+    user_text = V2Copy.get(V2Copy.MOD_NEEDS_FIX_USER).format(fix_request=fix_request)
+    kb = kb_moderation_user_fix(sub_id)
     author = await get_user_by_id(sub.user_id)
     if author:
         try:
@@ -249,7 +249,7 @@ async def handle_reject_reason(message: Message, state: FSMContext) -> None:
     )
     await set_moderated(sub_id, ProjectStatus.rejected)
     await log_admin_action(admin_user.id, AdminActionType.reject, target_submission_id=sub_id, comment=reason)
-    user_text = get_copy("V2_MOD_REJECT_USER").format(reason=reason)
+    user_text = V2Copy.get(V2Copy.MOD_REJECT_USER).format(reason=reason)
     author = await get_user_by_id(sub.user_id)
     if author:
         try:

@@ -1,4 +1,13 @@
+import os
+
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _test_env():
+    """Ensure BOT_TOKEN is set so Settings() does not fail (CI sets it; local may not)."""
+    if "BOT_TOKEN" not in os.environ:
+        os.environ["BOT_TOKEN"] = "dummy"
 
 
 @pytest.fixture

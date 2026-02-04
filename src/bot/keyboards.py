@@ -8,9 +8,10 @@ from aiogram.types import (
 )
 
 from src.bot.messages import get_copy
+from src.v2.ui import callbacks as v2_callbacks
 
 PS = "ps"
-MENU_PREFIX = "v2menu"
+MENU_PREFIX = v2_callbacks.MENU_PREFIX
 
 
 def reply_menu_keyboard() -> ReplyKeyboardMarkup:

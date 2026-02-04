@@ -1,4 +1,5 @@
-"""Step 4.5 verification: V2 validators, step registry, save message, step format."""
+"""Step 4.5 verification: V2 validators, step registry, save message, step format.
+Step 5: V2 UI Kit UX contracts (render_step, render_error, keyboards, callbacks)."""
 from src.v2.format_step import format_step_message, parse_copy_to_parts
 from src.v2.validators import (
     validate_non_empty,
@@ -12,6 +13,23 @@ from src.v2.validators import (
 )
 from src.v2.fsm.steps import get_step, is_optional, is_multi_link
 from src.bot.messages import get_copy
+from src.v2.ui import (
+    render_step,
+    render_error,
+    render_preview_card,
+    render_cabinet_status,
+    kb_step,
+    kb_preview,
+    kb_cabinet,
+    kb_moderation_admin,
+    V2_FORM_PREFIX,
+    V2_PREVIEW_PREFIX,
+    V2_MENU_PREFIX,
+    V2_MOD_PREFIX,
+    build_callback,
+    parse_callback,
+)
+import uuid
 
 
 def test_validators():
@@ -140,3 +158,130 @@ def test_menu_handler_shows_cabinet():
             show_cabinet.assert_called_once_with(message, state)
 
     asyncio.run(run())
+
+
+# ---- UI Kit UX Contracts (Step 5) ----
+def test_render_step_contract():
+    """render_step returns string with "Шаг X из Y" and HTML formatting."""
+    text = render_step(
+        step_idx=0,
+        total=19,
+        title="Название проекта",
+        prompt="Короткое пояснение.",
+        example="AI-ассистент",
+    )
+    assert isinstance(text, str)
+    assert "Шаг 1 из 19" in text
+    assert "📌" in text
+    assert "<b>" in text  # HTML formatting
+    assert "Название проекта" in text
+    assert "Пример:" in text or "example" in text.lower()
+
+
+def test_render_error_contract():
+    """render_error returns string with "❌ <b>Ошибка</b>" and error message."""
+    text = render_error("required")
+    assert isinstance(text, str)
+    assert "❌" in text
+    assert "<b>Ошибка</b>" in text
+    assert "Нужен ответ" in text or "ответ" in text.lower()
+
+
+def test_render_preview_card_contract():
+    """render_preview_card returns dict with text, parse_mode, disable_web_page_preview."""
+    data = {
+        "title": "Test Project",
+        "description": "Test description",
+        "contact": "@test",
+    }
+    result = render_preview_card(data, mode="preview")
+    assert isinstance(result, dict)
+    assert "text" in result
+    assert result["parse_mode"] == "HTML"
+    assert "disable_web_page_preview" in result
+    assert "Test Project" in result["text"]
+
+
+def test_render_cabinet_status_contract():
+    """render_cabinet_status returns HTML string with project and step info."""
+    text = render_cabinet_status(
+        project_name="Test Project",
+        step_key="q1",
+        step_num=1,
+        total=19,
+    )
+    assert isinstance(text, str)
+    assert "📊" in text
+    assert "<b>Текущий проект:</b>" in text
+    assert "Test Project" in text
+    assert "📍" in text
+    assert "<b>Шаг:</b>" in text
+    assert "1 из 19" in text
+
+
+def test_kb_step_contract():
+    """kb_step returns InlineKeyboardMarkup with back button."""
+    kb = kb_step(back=True, skip=False, save=False)
+    assert kb is not None
+    assert len(kb.inline_keyboard) > 0
+    assert any(btn.callback_data == build_callback(V2_FORM_PREFIX, "back") 
+               for row in kb.inline_keyboard for btn in row)
+
+
+def test_kb_preview_contract():
+    """kb_preview returns InlineKeyboardMarkup with submit, edit, menu buttons."""
+    kb = kb_preview(submit=True, edit=True, menu=True)
+    assert kb is not None
+    assert len(kb.inline_keyboard) > 0
+    # Check that submit callback exists
+    callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert any(cb == build_callback(V2_PREVIEW_PREFIX, "submit") for cb in callbacks)
+
+
+def test_kb_cabinet_contract():
+    """kb_cabinet returns InlineKeyboardMarkup with menu buttons."""
+    kb = kb_cabinet(show_resume=True, has_projects=True)
+    assert kb is not None
+    assert len(kb.inline_keyboard) > 0
+    # Check that resume callback exists when show_resume=True
+    callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert any(cb == build_callback(V2_MENU_PREFIX, "resume") for cb in callbacks)
+
+
+def test_kb_moderation_admin_contract():
+    """kb_moderation_admin returns InlineKeyboardMarkup with approve/needs_fix/reject buttons."""
+    sub_id = uuid.uuid4()
+    kb = kb_moderation_admin(sub_id)
+    assert kb is not None
+    assert len(kb.inline_keyboard) > 0
+    callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert any(build_callback(V2_MOD_PREFIX, "approve", str(sub_id)) in cb for cb in callbacks)
+
+
+def test_callback_prefixes_from_ui_kit():
+    """Callback prefixes come from UI Kit callbacks module."""
+    assert V2_FORM_PREFIX == "v2form"
+    assert V2_PREVIEW_PREFIX == "v2preview"
+    assert V2_MENU_PREFIX == "v2menu"
+    assert V2_MOD_PREFIX == "v2mod"
+
+
+def test_build_callback_contract():
+    """build_callback creates callback_data string."""
+    cb = build_callback("v2form", "back")
+    assert cb == "v2form:back"
+    cb2 = build_callback("v2mod", "approve", "123")
+    assert cb2 == "v2mod:approve:123"
+
+
+def test_parse_callback_contract():
+    """parse_callback parses callback_data into (prefix, action, args)."""
+    prefix, action, args = parse_callback("v2form:back")
+    assert prefix == "v2form"
+    assert action == "back"
+    assert args == []
+    
+    prefix2, action2, args2 = parse_callback("v2mod:approve:123")
+    assert prefix2 == "v2mod"
+    assert action2 == "approve"
+    assert args2 == ["123"]

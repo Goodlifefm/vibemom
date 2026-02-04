@@ -4,7 +4,7 @@ import logging
 from aiogram import Router
 from aiogram.types import CallbackQuery
 
-from src.bot.messages import get_copy
+from src.v2.ui.copy import V2Copy
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -15,4 +15,4 @@ async def handle_unknown_callback(callback: CallbackQuery) -> None:
     """Catch any callback not handled by form/preview/menu/start/moderation. Reply and answer to avoid loading."""
     logger.info("unknown_callback user_id=%s data=%s", callback.from_user.id if callback.from_user else 0, callback.data)
     await callback.answer()
-    await callback.message.answer(get_copy("V2_UNKNOWN_BUTTON"))
+    await callback.message.answer(V2Copy.get(V2Copy.UNKNOWN_BUTTON))

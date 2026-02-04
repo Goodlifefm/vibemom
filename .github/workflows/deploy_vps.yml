@@ -1,6 +1,9 @@
 name: Deploy to VPS (v2-editor)
 
 on:
+  push:
+    branches:
+      - v2-editor
   workflow_dispatch:
 
 concurrency:
@@ -21,15 +24,18 @@ jobs:
           if [ -z "${{ secrets.VPS_USER }}" ]; then echo "Error: VPS_USER secret is not set"; exit 1; fi
           if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "Error: VPS_SSH_KEY secret is not set"; exit 1; fi
 
+      - name: Prepare SSH known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
-          command_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          script_stop: true
+          port: 22
           script: |
             set -e
 

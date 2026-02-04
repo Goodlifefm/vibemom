@@ -1,0 +1,80 @@
+"""
+V2 copy: структурированные константы для пользовательских текстов V2 (RU).
+Переиспользует src.bot.messages.get_copy(), но добавляет структурированные константы.
+"""
+from src.bot.messages import get_copy
+
+
+class V2Copy:
+    """Структурированные константы для V2 copy ID."""
+    
+    # Навигация
+    BTN_BACK = "V2_BTN_BACK"
+    BTN_SKIP = "V2_BTN_SKIP"
+    BTN_SAVE = "V2_SAVE_BTN"
+    BTN_MENU = "V2_MENU_BTN"
+    BTN_FINISH_LINKS = "V2_FINISH_LINKS"
+    
+    # Кабинет
+    CABINET_GREETING = "V2_CABINET_GREETING"
+    CABINET_STATUS = "V2_CABINET_STATUS"
+    MENU_HINT = "V2_MENU_HINT"
+    MENU_CONTINUE = "V2_MENU_CONTINUE"
+    MENU_CURRENT_STEP = "V2_MENU_CURRENT_STEP"
+    MENU_PROJECT = "V2_MENU_PROJECT"
+    MENU_RESTART = "V2_MENU_RESTART"
+    MENU_MY_PROJECTS = "V2_MENU_MY_PROJECTS"
+    MENU_CREATE = "V2_MENU_CREATE"
+    MENU_HELP = "V2_MENU_HELP"
+    MENU_RESTART_CONFIRM = "V2_MENU_RESTART_CONFIRM"
+    MENU_STATUS_NO_PROJECT = "V2_MENU_STATUS_NO_PROJECT"
+    
+    # Превью
+    PREVIEW_HEADER = "V2_PREVIEW_POST"
+    PREVIEW_SUBMIT_CONFIRM = "SUBMIT_Q7_SEND_PROMPT"
+    PREVIEW_SUCCESS = "V2_SUBMIT_CONFIRM"
+    BTN_SUBMIT_TO_MODERATION = "BTN_SUBMIT_TO_MODERATION"
+    BTN_EDIT_ANSWERS = "BTN_EDIT_ANSWERS"
+    BTN_YES_SEND = "BTN_YES_SEND"
+    BTN_NO_RETURN = "BTN_NO_RETURN"
+    
+    # Ошибки
+    ERROR_REQUIRED = "V2_INVALID_REQUIRED"
+    ERROR_EMAIL = "V2_INVALID_EMAIL"
+    ERROR_LINK = "V2_INVALID_LINK"
+    ERROR_TIME = "V2_INVALID_TIME"
+    ERROR_COST = "V2_INVALID_COST"
+    ERROR_BUDGET = "V2_INVALID_BUDGET"
+    
+    # Модерация
+    MOD_APPROVE_USER = "V2_MOD_APPROVE_USER"
+    MOD_NEEDS_FIX_USER = "V2_MOD_NEEDS_FIX_USER"
+    MOD_REJECT_USER = "V2_MOD_REJECT_USER"
+    MOD_ASK_FIX = "V2_MOD_ASK_FIX"
+    MOD_ASK_REJECT = "V2_MOD_ASK_REJECT"
+    BTN_MAKE_EDIT = "BTN_MAKE_EDIT"
+    
+    # Проект
+    PROJECT_NO_DATA = "V2_PROJECT_NO_DATA"
+    MY_PROJECTS_HEADER = "V2_MY_PROJECTS_HEADER"
+    MY_PROJECTS_EMPTY = "V2_MY_PROJECTS_EMPTY"
+    BTN_OPEN = "V2_BTN_OPEN"
+    
+    # Статусы
+    STATUS_DRAFT = "V2_STATUS_DRAFT"
+    STATUS_PENDING = "V2_STATUS_PENDING"
+    STATUS_NEEDS_FIX = "V2_STATUS_NEEDS_FIX"
+    STATUS_APPROVED = "V2_STATUS_APPROVED"
+    STATUS_REJECTED = "V2_STATUS_REJECTED"
+    
+    # Прочее
+    SAVED_RESUME = "V2_SAVED_RESUME"
+    LINK_ADDED = "V2_LINK_ADDED"
+    YES_BUTTON = "YES_BUTTON"
+    NO_BUTTON = "NO_BUTTON"
+    UNKNOWN_BUTTON = "V2_UNKNOWN_BUTTON"
+    
+    @staticmethod
+    def get(key: str) -> str:
+        """Обёртка над get_copy() для удобства."""
+        return get_copy(key)

@@ -4,26 +4,23 @@ import uuid
 
 from aiogram import Router, F
 from aiogram.filters import StateFilter
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
-from src.bot.messages import get_copy
 from src.v2.repo import get_submission, update_answers_step
 from src.v2.fsm.states import V2FormSteps
-from src.v2.format_step import format_step_message, parse_copy_to_parts
 from src.v2.fsm.steps import (
-    STEP_KEYS,
     get_step,
-    get_step_index,
     get_next_step,
     get_prev_step,
     is_optional,
     is_multi_link,
 )
 from src.v2.validators import validate, parse_budget
+from src.v2.ui import callbacks, copy, keyboards, render
 
 router = Router()
-PREFIX = "v2form"
+PREFIX = callbacks.FORM_PREFIX
 logger = logging.getLogger(__name__)
 
 DATA_SUBMISSION_ID = "submission_id"
@@ -35,41 +32,21 @@ def _log_button(callback: CallbackQuery, data: dict, action: str) -> None:
     logger.info("button user_id=%s submission_id=%s step_id=%s action=%s", user_id, data.get(DATA_SUBMISSION_ID), data.get(DATA_STEP_KEY), action)
 
 
-def _form_kb(step_key: str) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=get_copy("V2_BTN_BACK").strip(), callback_data=f"{PREFIX}:back")]]
-    if is_optional(step_key):
-        rows.append([InlineKeyboardButton(text=get_copy("V2_BTN_SKIP").strip(), callback_data=f"{PREFIX}:skip")])
-    if is_multi_link(step_key):
-        rows.append([InlineKeyboardButton(text=get_copy("V2_FINISH_LINKS").strip(), callback_data=f"{PREFIX}:finish_links")])
-    rows.append([InlineKeyboardButton(text=get_copy("V2_SAVE_BTN").strip(), callback_data=f"{PREFIX}:save")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def _question_text(step_key: str) -> str:
-    """Build question text by unified template: Шаг X из Y, 📌 title, intro, example (parse_mode=HTML)."""
-    step_def = get_step(step_key)
-    if not step_def:
-        return ""
-    idx = get_step_index(step_key)
-    total = len(STEP_KEYS)
-    copy_text = get_copy(step_def["copy_id"])
-    parts = parse_copy_to_parts(copy_text)
-    return format_step_message(
-        step_num=idx + 1,
-        total=total,
-        title=parts["title"],
-        intro=parts["intro"],
-        todo=parts["todo"],
-        example=parts["example"],
-    )
-
-
 async def show_question(message: Message, state: FSMContext, step_key: str) -> None:
     """Show question for step_key (repeat question for back/resume)."""
-    text = _question_text(step_key)
+    answers = None
+    data = await state.get_data()
+    sid = data.get(DATA_SUBMISSION_ID)
+    if sid:
+        try:
+            sub = await get_submission(uuid.UUID(sid))
+            answers = sub.answers if sub else None
+        except (ValueError, TypeError):
+            answers = None
+    text = render.render_step(step_key, answers)
     if not text:
         return
-    await message.answer(text, reply_markup=_form_kb(step_key), parse_mode="HTML")
+    await message.answer(text, reply_markup=keyboards.form_step_kb(step_key), parse_mode="HTML")
 
 
 async def _persist_and_go_next(
@@ -95,7 +72,7 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
     if not sid or not step_key:
-        await message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
+        await message.answer(copy.t(copy.MY_PROJECTS_EMPTY))
         return
     try:
         sub_id = uuid.UUID(sid)
@@ -108,7 +85,7 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
     validator = step_def["validator"]
     ok, error_copy_id = validate(validator, text)
     if not ok:
-        err_msg = get_copy(error_copy_id or "V2_INVALID_REQUIRED")
+        err_msg = render.render_error(error_copy_id or copy.INVALID_REQUIRED)
         await message.answer(err_msg, parse_mode="HTML")
         await show_question(message, state, step_key)
         return
@@ -116,14 +93,14 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
     if is_multi_link(step_key):
         sub = await get_submission(sub_id)
         if sub is None:
-            await message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
+            await message.answer(copy.t(copy.MY_PROJECTS_EMPTY))
             return
         answers = dict(sub.answers or {})
         links = list(answers.get("links") or [])
         links.append(text)
         answers_delta = {"links": links}
         await update_answers_step(sub_id, answers_delta, current_step=step_key)
-        await message.answer(get_copy("V2_LINK_ADDED"), parse_mode="HTML")
+        await message.answer(copy.t(copy.LINK_ADDED), parse_mode="HTML")
         await show_question(message, state, step_key)
         return
     if step_key == "q10" and answer_key == "budget":
@@ -146,7 +123,7 @@ async def handle_text_answer(message: Message, state: FSMContext) -> None:
 
 
 # ---- Back ----
-@router.callback_query(F.data == f"{PREFIX}:back", StateFilter(V2FormSteps.answering))
+@router.callback_query(F.data == callbacks.form(callbacks.FORM_BACK), StateFilter(V2FormSteps.answering))
 async def handle_back(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
@@ -171,7 +148,7 @@ async def handle_back(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---- Skip (only optional) ----
-@router.callback_query(F.data == f"{PREFIX}:skip", StateFilter(V2FormSteps.answering))
+@router.callback_query(F.data == callbacks.form(callbacks.FORM_SKIP), StateFilter(V2FormSteps.answering))
 async def handle_skip(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
@@ -181,7 +158,8 @@ async def handle_skip(callback: CallbackQuery, state: FSMContext) -> None:
     if not sid or not step_key:
         return
     if not is_optional(step_key):
-        await callback.message.answer(get_copy("V2_INVALID_REQUIRED"), parse_mode="HTML")
+        err_msg = render.render_error(copy.INVALID_REQUIRED)
+        await callback.message.answer(err_msg, parse_mode="HTML")
         await show_question(callback.message, state, step_key)
         return
     step_def = get_step(step_key)
@@ -204,7 +182,7 @@ async def handle_skip(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---- Save (exact response) ----
-@router.callback_query(F.data == f"{PREFIX}:save", StateFilter(V2FormSteps.answering))
+@router.callback_query(F.data == callbacks.form(callbacks.FORM_SAVE), StateFilter(V2FormSteps.answering))
 async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
@@ -212,7 +190,7 @@ async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
     sid = data.get(DATA_SUBMISSION_ID)
     step_key = data.get(DATA_STEP_KEY)
     if not sid:
-        await callback.message.answer(get_copy("V2_SAVED_RESUME"))
+        await callback.message.answer(copy.t(copy.SAVED_RESUME))
         from src.v2.routers.menu import show_menu_cabinet
         await show_menu_cabinet(callback.message, state)
         return
@@ -221,13 +199,13 @@ async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
     except ValueError:
         return
     await update_answers_step(sub_id, {}, current_step=step_key)
-    await callback.message.answer(get_copy("V2_SAVED_RESUME"))
+    await callback.message.answer(copy.t(copy.SAVED_RESUME))
     from src.v2.routers.menu import show_menu_cabinet
     await show_menu_cabinet(callback.message, state)
 
 
 # ---- Finish links (Q21) ----
-@router.callback_query(F.data == f"{PREFIX}:finish_links", StateFilter(V2FormSteps.answering))
+@router.callback_query(F.data == callbacks.form(callbacks.FORM_FINISH_LINKS), StateFilter(V2FormSteps.answering))
 async def handle_finish_links(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()

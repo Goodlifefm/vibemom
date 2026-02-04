@@ -3,10 +3,9 @@ import uuid
 
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
-from src.bot.messages import get_copy
 from src.v2.repo import (
     get_or_create_user,
     get_active_submission,
@@ -17,38 +16,25 @@ from src.v2.repo import (
 from src.v2.fsm.states import V2FormSteps
 from src.v2.routers.preview import show_preview
 from src.bot.database.models import ProjectStatus
+from src.v2.ui import callbacks, copy, keyboards
 
 router = Router()
-PREFIX = "v2cab"
+PREFIX = callbacks.CAB_PREFIX
 
 
 def _status_copy(status: ProjectStatus) -> str:
     m = {
-        ProjectStatus.draft: "V2_STATUS_DRAFT",
-        ProjectStatus.pending: "V2_STATUS_PENDING",
-        ProjectStatus.needs_fix: "V2_STATUS_NEEDS_FIX",
-        ProjectStatus.approved: "V2_STATUS_APPROVED",
-        ProjectStatus.rejected: "V2_STATUS_REJECTED",
+        ProjectStatus.draft: copy.STATUS_DRAFT,
+        ProjectStatus.pending: copy.STATUS_PENDING,
+        ProjectStatus.needs_fix: copy.STATUS_NEEDS_FIX,
+        ProjectStatus.approved: copy.STATUS_APPROVED,
+        ProjectStatus.rejected: copy.STATUS_REJECTED,
     }
-    return get_copy(m.get(status, "V2_STATUS_DRAFT")).strip()
-
-
-def cabinet_kb(show_resume: bool = False) -> InlineKeyboardMarkup:
-    """Legacy cabinet inline kb (v2cab). Prefer menu_cabinet_inline_kb for main cabinet."""
-    rows = []
-    if show_resume:
-        rows.append([InlineKeyboardButton(text=get_copy("V2_BTN_RESUME_PROJECT").strip(), callback_data=f"{PREFIX}:resume")])
-    rows.extend([
-        [InlineKeyboardButton(text=get_copy("V2_BTN_CREATE_PROJECT").strip(), callback_data=f"{PREFIX}:create")],
-        [InlineKeyboardButton(text=get_copy("V2_BTN_MY_PROJECTS").strip(), callback_data=f"{PREFIX}:projects")],
-        [InlineKeyboardButton(text=get_copy("V2_BTN_HOW_IT_WORKS").strip(), callback_data=f"{PREFIX}:how")],
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return copy.t(m.get(status, copy.STATUS_DRAFT)).strip()
 
 
 async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: FSMContext | None = None) -> None:
     """Show V2 cabinet (greeting + menu inline kb) and set persistent 🏠 Меню reply keyboard."""
-    from src.bot.keyboards import menu_cabinet_inline_kb, reply_menu_keyboard
     target = message_or_callback.message if isinstance(message_or_callback, CallbackQuery) else message_or_callback
     show_resume = False
     has_projects = False
@@ -66,16 +52,15 @@ async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: F
         has_projects = bool(subs)
     except Exception:
         pass
-    kb = menu_cabinet_inline_kb(show_resume=show_resume, has_projects=has_projects)
-    await target.answer(get_copy("V2_CABINET_GREETING"), reply_markup=kb)
-    await target.answer(get_copy("V2_MENU_HINT"), reply_markup=reply_menu_keyboard())
+    kb = keyboards.cabinet_inline_kb(show_resume=show_resume)
+    await target.answer(copy.t(copy.CABINET_GREETING), reply_markup=kb)
+    await target.answer(copy.t(copy.MENU_HINT), reply_markup=keyboards.reply_menu_keyboard())
 
 
 async def _do_resume(message: Message, state: FSMContext) -> None:
     """Load active submission, restore current_step, show question (for /resume and Resume button)."""
     from src.v2.repo import get_or_create_user
-    from src.bot.keyboards import reply_menu_keyboard
-    await message.answer(get_copy("V2_MENU_HINT"), reply_markup=reply_menu_keyboard())
+    await message.answer(copy.t(copy.MENU_HINT), reply_markup=keyboards.reply_menu_keyboard())
     user = await get_or_create_user(
         message.from_user.id if message.from_user else 0,
         message.from_user.username if message.from_user else None,
@@ -147,18 +132,18 @@ async def cb_projects(callback: CallbackQuery, state: FSMContext) -> None:
     subs = await list_submissions_by_user(user.id, limit=5)
     if not subs:
         await callback.message.answer(
-            get_copy("V2_MY_PROJECTS_HEADER") + "\n\n" + get_copy("V2_MY_PROJECTS_EMPTY"),
+            V2Copy.get(V2Copy.MY_PROJECTS_HEADER) + "\n\n" + V2Copy.get(V2Copy.MY_PROJECTS_EMPTY),
             reply_markup=cabinet_kb(show_resume=bool((await state.get_data()).get("submission_id"))),
         )
         return
-    text = get_copy("V2_MY_PROJECTS_HEADER") + "\n\n"
+    text = V2Copy.get(V2Copy.MY_PROJECTS_HEADER) + "\n\n"
     kb_rows = []
     for s in subs:
         title = (s.answers or {}).get("title", "—") or "—"
         if title == "—":
             title = "Без названия"
         text += f"• {title[:40]} — {_status_copy(s.status)}\n"
-        kb_rows.append([InlineKeyboardButton(text=get_copy("V2_BTN_OPEN").strip() + f" ({title[:20]})", callback_data=f"{PREFIX}:open:{s.id}")])
+        kb_rows.append([InlineKeyboardButton(text=V2Copy.get(V2Copy.BTN_OPEN).strip() + f" ({title[:20]})", callback_data=f"{PREFIX}:open:{s.id}")])
     from aiogram.types import InlineKeyboardMarkup
     await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
 

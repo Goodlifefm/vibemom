@@ -3,49 +3,42 @@ import logging
 import uuid
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 
 from src.bot.config import Settings
 from src.bot.messages import get_copy
 from src.v2.repo import get_submission, submit_for_moderation, get_user_by_id
 from src.v2.rendering import render_post
+from src.v2.ui import (
+    V2_PREVIEW_PREFIX,
+    V2_MOD_PREFIX,
+    kb_preview,
+    kb_preview_confirm,
+    render_preview_card,
+)
+from src.v2.ui.keyboards import kb_moderation_admin
+from src.v2.ui.copy import V2Copy
 
 router = Router()
-PREFIX = "v2preview"
-V2MOD = "v2mod"
+PREFIX = V2_PREVIEW_PREFIX
+V2MOD = V2_MOD_PREFIX
 logger = logging.getLogger(__name__)
 
 
 def _admin_mod_kb(submission_id: uuid.UUID) -> InlineKeyboardMarkup:
-    sid = str(submission_id)
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Approve", callback_data=f"{V2MOD}:approve:{sid}"),
-            InlineKeyboardButton(text="🛠 Needs fix", callback_data=f"{V2MOD}:needs_fix:{sid}"),
-            InlineKeyboardButton(text="❌ Reject", callback_data=f"{V2MOD}:reject:{sid}"),
-        ],
-        [
-            InlineKeyboardButton(text="📋 Copy post", callback_data=f"{V2MOD}:copy:{sid}"),
-            InlineKeyboardButton(text="👤 Author contact", callback_data=f"{V2MOD}:author:{sid}"),
-        ],
-    ])
+    """Build admin moderation keyboard using UI Kit."""
+    return kb_moderation_admin(submission_id)
 
 
 def _preview_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_copy("BTN_SUBMIT_TO_MODERATION").strip(), callback_data=f"{PREFIX}:submit")],
-        [InlineKeyboardButton(text=get_copy("BTN_EDIT_ANSWERS").strip(), callback_data=f"{PREFIX}:back")],
-        [InlineKeyboardButton(text=get_copy("V2_MENU_BTN").strip(), callback_data=f"{PREFIX}:menu")],
-    ])
+    """Build preview keyboard using UI Kit."""
+    return kb_preview(submit=True, edit=True, menu=True)
 
 
 def _preview_confirm_kb() -> InlineKeyboardMarkup:
-    """Yes/No for submit confirmation. No -> back to Preview."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_copy("BTN_YES_SEND").strip(), callback_data=f"{PREFIX}:submit_yes")],
-        [InlineKeyboardButton(text=get_copy("BTN_NO_RETURN").strip(), callback_data=f"{PREFIX}:submit_no")],
-    ])
+    """Yes/No for submit confirmation using UI Kit."""
+    return kb_preview_confirm()
 
 
 async def show_preview(message: Message, state: FSMContext) -> None:
@@ -61,10 +54,14 @@ async def show_preview(message: Message, state: FSMContext) -> None:
         return
     sub = await get_submission(sub_id)
     if not sub:
-        await message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
+        await message.answer(V2Copy.get(V2Copy.MY_PROJECTS_EMPTY))
         return
     answers = sub.answers or {}
-    result = render_post(answers, mode="preview", preview_header=get_copy("V2_PREVIEW_POST"))
+    result = render_preview_card(
+        data=answers,
+        mode="preview",
+        header=V2Copy.get(V2Copy.PREVIEW_HEADER),
+    )
     await message.answer(
         result["text"],
         reply_markup=_preview_kb(),
@@ -83,10 +80,10 @@ async def cb_submit(callback: CallbackQuery, state: FSMContext) -> None:
     user_id = callback.from_user.id if callback.from_user else 0
     logger.info("button user_id=%s submission_id=%s step_id=%s action=submit", user_id, sid, step_key)
     if not sid:
-        await callback.message.answer(get_copy("V2_MY_PROJECTS_EMPTY"))
+        await callback.message.answer(V2Copy.get(V2Copy.MY_PROJECTS_EMPTY))
         return
     await callback.message.answer(
-        get_copy("SUBMIT_Q7_SEND_PROMPT"),
+        V2Copy.get(V2Copy.PREVIEW_SUBMIT_CONFIRM),
         reply_markup=_preview_confirm_kb(),
         parse_mode="HTML",
     )
@@ -162,7 +159,7 @@ async def cb_submit_yes(callback: CallbackQuery, state: FSMContext) -> None:
         logger.exception("V2 submit: failed to send to admin chat: %s", e)
         await callback.message.answer(get_copy("ERROR_MODERATION_SEND"))
         return
-    await callback.message.answer(get_copy("V2_SUBMIT_CONFIRM"))
+    await callback.message.answer(V2Copy.get(V2Copy.PREVIEW_SUCCESS))
     await state.clear()
     from src.v2.routers.menu import show_menu_cabinet
     await show_menu_cabinet(callback.message, state)
