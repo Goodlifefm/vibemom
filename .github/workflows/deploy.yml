@@ -53,9 +53,11 @@ jobs:
             git reset --hard origin/v2-editor
 
             echo "== Build & run =="
-            docker compose down || true
+            docker compose down --remove-orphans || true
+            docker compose rm -f || true
+            docker network prune -f || true
             docker compose pull || true
-            docker compose up -d --build
+            docker compose up -d --build --force-recreate --remove-orphans
 
             echo "== Cleanup =="
             docker image prune -f
