@@ -29,6 +29,8 @@ def _routing_mode_line(settings: Settings) -> str:
 
 async def main() -> None:
     settings = Settings()
+    if not settings.bot_token:
+        raise RuntimeError("BOT_TOKEN is required to run the bot")
     # Гарантированно инициализируем БД до регистрации хендлеров и polling
     init_db(settings)
     logger.info("Bot started, DB initialized")
