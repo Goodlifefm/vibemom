@@ -1,4 +1,5 @@
-# Auto-deploy to VPS on push to v2-editor branch. Manual run: Actions → Deploy to VPS → Run workflow.
+# Auto-deploy to VPS on push to v2-editor branch AFTER CI passes.
+# Manual run: Actions → Deploy to VPS → Run workflow.
 name: Deploy to VPS
 
 on:
@@ -8,27 +9,26 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-vps
+  group: deploy-vps-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # First run CI checks
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  # Deploy only if CI passed
   deploy:
+    needs: ci
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/v2-editor' }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Check deploy secrets
         run: |
-          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "Error: VPS_HOST secret is not set"; exit 1; fi
-          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "Error: VPS_USER secret is not set"; exit 1; fi
-          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "Error: VPS_SSH_KEY secret is not set"; exit 1; fi
-
-      - name: Prepare SSH known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p 22 "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          if [ -z "${{ secrets.VPS_HOST }}" ]; then echo "::error::VPS_HOST secret is not set"; exit 1; fi
+          if [ -z "${{ secrets.VPS_USER }}" ]; then echo "::error::VPS_USER secret is not set"; exit 1; fi
+          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then echo "::error::VPS_SSH_KEY secret is not set"; exit 1; fi
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -36,32 +36,42 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 10m
           script: |
             set -e
 
             echo "== Docker check =="
-            command -v docker || (echo "Error: docker not found"; exit 1)
-            docker compose version || docker-compose version || (echo "Error: docker compose not found"; exit 1)
+            command -v docker || { echo "Error: docker not found"; exit 1; }
+            docker compose version || docker-compose version || { echo "Error: docker compose not found"; exit 1; }
 
             echo "== Go to project =="
-            cd /root/vibemom || (echo "Error: /root/vibemom not found. Clone repo first."; exit 1)
+            cd /root/vibemom || { echo "Error: /root/vibemom not found"; exit 1; }
 
             echo "== Update code =="
             git fetch --all
             git checkout v2-editor
             git reset --hard origin/v2-editor
 
-            echo "== Build & run =="
-            docker compose down --remove-orphans || true
-            docker compose rm -f || true
-            docker network prune -f || true
-            docker compose pull || true
-            docker compose up -d --build --force-recreate --remove-orphans
+            echo "== Stop containers safely =="
+            docker compose down --remove-orphans --timeout 30 || true
 
-            echo "== Cleanup =="
-            docker image prune -f
+            echo "== Clean up stale resources =="
+            docker container prune -f || true
+            docker network prune -f || true
+
+            echo "== Build & run =="
+            docker compose pull || true
+            docker compose up -d --build --force-recreate
+
+            echo "== Cleanup old images =="
+            docker image prune -f || true
+
+            echo "== Wait for services =="
+            sleep 5
 
             echo "== Status =="
             docker compose ps
-            docker compose logs --tail=80 bot
+
+            echo "== Recent logs =="
+            docker compose logs --tail=50 bot

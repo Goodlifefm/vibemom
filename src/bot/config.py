@@ -1,5 +1,15 @@
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
+
+
+def is_ci_or_test() -> bool:
+    """Detect CI/test environment where BOT_TOKEN validation should be relaxed."""
+    return (
+        os.getenv("CI", "").lower() in ("true", "1", "yes")
+        or os.getenv("APP_ENV", "").lower() in ("ci", "test", "testing")
+        or os.getenv("PYTEST_CURRENT_TEST") is not None
+    )
 
 
 class Settings(BaseSettings):
@@ -11,14 +21,33 @@ class Settings(BaseSettings):
     @classmethod
     def strip_token(cls, v: str) -> str:
         return v.strip() if isinstance(v, str) else ""
+
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/vibe_market"
     admin_telegram_ids: str = ""
     admin_ids: str = ""  # preferred over admin_telegram_ids (backward compat)
     admin_chat_id: str = ""
     feed_chat_id: str = ""  # FEED_CHAT_ID: канал для автопубликации одобренных проектов (@vibecode777 или id)
+    log_level: str = "INFO"
+    app_env: str = "local"  # local, ci, test, production
+    auto_migrate: bool = True
     v2_enabled: bool = False
     v2_canary_mode: bool = False
     v2_allowlist: str = ""
+
+    @property
+    def is_ci_or_test(self) -> bool:
+        """Check if running in CI/test environment."""
+        return is_ci_or_test() or self.app_env.lower() in ("ci", "test", "testing")
+
+    def validate_for_runtime(self) -> None:
+        """Validate settings for production runtime. Call this in main.py before starting bot."""
+        if self.is_ci_or_test:
+            return  # Skip validation in CI/test
+        if not self.bot_token or self.bot_token.startswith("test_"):
+            raise RuntimeError(
+                "BOT_TOKEN is required for runtime. "
+                "Set a valid Telegram bot token in .env or environment."
+            )
 
     def get_admin_ids(self) -> set[int]:
         raw = (self.admin_ids or self.admin_telegram_ids) or ""
