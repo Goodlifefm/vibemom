@@ -13,6 +13,19 @@ V2_MOD_PREFIX = "v2mod"
 V2_CABINET_PREFIX = "v2cab"  # legacy, использовать v2menu
 V2_FIX_PREFIX = "v2fix"
 
+# ---- Backward-compatible aliases for older imports ----
+MENU_PREFIX = V2_MENU_PREFIX
+FORM_PREFIX = V2_FORM_PREFIX
+PREVIEW_PREFIX = V2_PREVIEW_PREFIX
+MOD_PREFIX = V2_MOD_PREFIX
+CABINET_PREFIX = V2_CABINET_PREFIX
+FIX_PREFIX = V2_FIX_PREFIX
+
+# Legacy placeholders used in some V1 code paths (if any)
+BACK_PREFIX = V2_FORM_PREFIX
+CANCEL_PREFIX = V2_FORM_PREFIX
+SUBMIT_PREFIX = V2_PREVIEW_PREFIX
+
 def parse_callback(data: str) -> tuple[str | None, str | None, list[str]]:
     """
     Парсит callback_data в (prefix, action, args).

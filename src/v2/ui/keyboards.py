@@ -11,6 +11,7 @@ from src.v2.ui.callbacks import (
     V2_MENU_PREFIX,
     V2_MOD_PREFIX,
     V2_FIX_PREFIX,
+    V2_CABINET_PREFIX,
     build_callback,
 )
 from src.v2.ui.copy import V2Copy
@@ -245,3 +246,61 @@ def kb_moderation_user_fix(submission_id: uuid.UUID) -> InlineKeyboardMarkup:
             callback_data=build_callback(V2_FIX_PREFIX, "edit", sid),
         )],
     ])
+
+
+# ---- Backward-compatible wrappers for new UI kit naming ----
+def menu_cabinet_inline_kb(*, show_resume: bool, has_projects: bool) -> InlineKeyboardMarkup:
+    return kb_cabinet(show_resume=show_resume, has_projects=has_projects)
+
+
+def menu_restart_confirm_kb() -> InlineKeyboardMarkup:
+    return kb_restart_confirm()
+
+
+def menu_current_step_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=V2Copy.get(V2Copy.MENU_CONTINUE).strip(),
+            callback_data=build_callback(V2_MENU_PREFIX, "resume"),
+        )],
+    ])
+
+
+def projects_list_kb(projects: list[tuple[str, uuid.UUID | str]]) -> InlineKeyboardMarkup:
+    rows = []
+    for title, sid in projects:
+        rows.append([InlineKeyboardButton(
+            text=V2Copy.get(V2Copy.BTN_OPEN).strip() + f" ({title[:20]})",
+            callback_data=build_callback(V2_CABINET_PREFIX, "open", str(sid)),
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def cabinet_inline_kb(*, show_resume: bool) -> InlineKeyboardMarkup:
+    return kb_cabinet(show_resume=show_resume, has_projects=False)
+
+
+def form_step_kb(step_key: str) -> InlineKeyboardMarkup:
+    from src.v2.fsm.steps import is_optional, is_multi_link
+    return kb_step(
+        back=True,
+        skip=is_optional(step_key),
+        finish_links=is_multi_link(step_key),
+        save=True,
+    )
+
+
+def preview_kb() -> InlineKeyboardMarkup:
+    return kb_preview(submit=True, edit=True, menu=True)
+
+
+def preview_confirm_kb() -> InlineKeyboardMarkup:
+    return kb_preview_confirm()
+
+
+def admin_mod_kb(submission_id: uuid.UUID) -> InlineKeyboardMarkup:
+    return kb_moderation_admin(submission_id)
+
+
+def fix_edit_kb(submission_id: uuid.UUID | str) -> InlineKeyboardMarkup:
+    return kb_moderation_user_fix(uuid.UUID(str(submission_id)))

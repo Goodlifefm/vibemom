@@ -16,6 +16,7 @@ from src.v2.repo import (
 from src.v2.fsm.states import V2FormSteps
 from src.v2.routers.preview import show_preview
 from src.bot.database.models import ProjectStatus
+from src.bot.keyboards import reply_menu_keyboard
 from src.v2.ui import callbacks, copy, keyboards
 
 router = Router()
@@ -54,13 +55,13 @@ async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: F
         pass
     kb = keyboards.cabinet_inline_kb(show_resume=show_resume)
     await target.answer(copy.t(copy.CABINET_GREETING), reply_markup=kb)
-    await target.answer(copy.t(copy.MENU_HINT), reply_markup=keyboards.reply_menu_keyboard())
+    await target.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
 
 
 async def _do_resume(message: Message, state: FSMContext) -> None:
     """Load active submission, restore current_step, show question (for /resume and Resume button)."""
     from src.v2.repo import get_or_create_user
-    await message.answer(copy.t(copy.MENU_HINT), reply_markup=keyboards.reply_menu_keyboard())
+    await message.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
     user = await get_or_create_user(
         message.from_user.id if message.from_user else 0,
         message.from_user.username if message.from_user else None,
@@ -133,19 +134,18 @@ async def cb_projects(callback: CallbackQuery, state: FSMContext) -> None:
     if not subs:
         await callback.message.answer(
             V2Copy.get(V2Copy.MY_PROJECTS_HEADER) + "\n\n" + V2Copy.get(V2Copy.MY_PROJECTS_EMPTY),
-            reply_markup=cabinet_kb(show_resume=bool((await state.get_data()).get("submission_id"))),
+            reply_markup=keyboards.cabinet_inline_kb(show_resume=bool((await state.get_data()).get("submission_id"))),
         )
         return
     text = V2Copy.get(V2Copy.MY_PROJECTS_HEADER) + "\n\n"
-    kb_rows = []
+    projects: list[tuple[str, uuid.UUID]] = []
     for s in subs:
-        title = (s.answers or {}).get("title", "—") or "—"
-        if title == "—":
-            title = "Без названия"
+        title = (s.answers or {}).get("title", copy.CARD_EMPTY_VALUE) or copy.CARD_EMPTY_VALUE
+        if title == copy.CARD_EMPTY_VALUE:
+            title = copy.UNTITLED_PROJECT
         text += f"• {title[:40]} — {_status_copy(s.status)}\n"
-        kb_rows.append([InlineKeyboardButton(text=V2Copy.get(V2Copy.BTN_OPEN).strip() + f" ({title[:20]})", callback_data=f"{PREFIX}:open:{s.id}")])
-    from aiogram.types import InlineKeyboardMarkup
-    await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
+        projects.append((title, s.id))
+    await callback.message.answer(text, reply_markup=keyboards.projects_list_kb(projects))
 
 
 @router.callback_query(F.data.startswith(f"{PREFIX}:open:"))
@@ -184,8 +184,8 @@ async def cb_open(callback: CallbackQuery, state: FSMContext) -> None:
 async def cb_how(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.answer(
-        get_copy("V2_HOW_IT_WORKS"),
-        reply_markup=cabinet_kb(show_resume=bool((await state.get_data()).get("submission_id"))),
+        copy.t(copy.HOW_IT_WORKS),
+        reply_markup=keyboards.cabinet_inline_kb(show_resume=bool((await state.get_data()).get("submission_id"))),
     )
 
 

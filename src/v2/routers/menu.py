@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
+from src.bot.keyboards import reply_menu_keyboard
 from src.v2.ui import callbacks, copy, keyboards, render
 from src.v2.repo import (
     get_or_create_user,
@@ -36,7 +37,7 @@ def _status_copy(status: ProjectStatus) -> str:
 
 async def _send_menu_keyboard(target: Message) -> None:
     """Send second message to set persistent reply keyboard."""
-    await target.answer(copy.t(copy.MENU_HINT), reply_markup=keyboards.reply_menu_keyboard())
+    await target.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
 
 
 def _cabinet_status_text(step_key: str | None, step_num: int, total: int, project_name: str | None) -> str:
