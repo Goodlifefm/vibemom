@@ -126,21 +126,40 @@ def step_index(state_id: str) -> int:
     return -1
 
 
-def get_project_submission_schema(v2_enabled: bool) -> Any:
+class _Schema:
+    """Schema wrapper for V1 or V2."""
+    def __init__(self, steps: list[dict], validators: dict, first_step_fn: Callable, get_step_fn: Callable, step_index_fn: Callable):
+        self.STEPS = steps
+        self.VALIDATORS = validators
+        self._first_step_fn = first_step_fn
+        self._get_step_fn = get_step_fn
+        self._step_index_fn = step_index_fn
+    
+    def first_step(self) -> dict[str, Any]:
+        return self._first_step_fn()
+    
+    def get_step(self, state_id: str) -> dict[str, Any] | None:
+        return self._get_step_fn(state_id)
+    
+    def step_index(self, state_id: str) -> int:
+        return self._step_index_fn(state_id)
+
+
+def get_project_submission_schema(v2_enabled: bool) -> _Schema:
     """Return schema object for submission FSM. When v2_enabled=True uses V2 (25+ steps, new keys)."""
     if v2_enabled:
         from src.bot import project_submission_schema_v2 as v2
-        return type("Schema", (), {
-            "STEPS": v2.STEPS,
-            "first_step": v2.first_step,
-            "get_step": v2.get_step,
-            "step_index": v2.step_index,
-            "VALIDATORS": v2.VALIDATORS,
-        })()
-    return type("Schema", (), {
-        "STEPS": STEPS,
-        "first_step": first_step,
-        "get_step": get_step,
-        "step_index": step_index,
-        "VALIDATORS": VALIDATORS,
-    })()
+        return _Schema(
+            steps=v2.STEPS,
+            validators=v2.VALIDATORS,
+            first_step_fn=v2.first_step,
+            get_step_fn=v2.get_step,
+            step_index_fn=v2.step_index,
+        )
+    return _Schema(
+        steps=STEPS,
+        validators=VALIDATORS,
+        first_step_fn=first_step,
+        get_step_fn=get_step,
+        step_index_fn=step_index,
+    )
