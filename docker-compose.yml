@@ -26,12 +26,14 @@ services:
       ADMIN_CHAT_ID: ${ADMIN_CHAT_ID:-}
       FEED_CHAT_ID: ${FEED_CHAT_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_ENV: ${APP_ENV:-local}
       V2_ENABLED: ${V2_ENABLED:-false}
       V2_CANARY_MODE: ${V2_CANARY_MODE:-false}
       V2_ALLOWLIST: ${V2_ALLOWLIST:-}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
     env_file:
       - .env
-    command: sh -c "alembic upgrade head && python main.py"
+    command: ["/app/scripts/entrypoint.sh"]
     healthcheck:
       test: ["CMD", "python", "-m", "src.bot.health"]
       interval: 60s

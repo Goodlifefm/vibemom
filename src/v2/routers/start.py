@@ -10,6 +10,7 @@ from src.bot.messages import get_copy
 from src.v2.repo import (
     get_or_create_user,
     get_active_submission,
+    get_submission,
     list_submissions_by_user,
     create_submission,
 )
@@ -167,7 +168,6 @@ async def cb_open(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     sid = callback.data.split(":", 2)[2]
     await state.update_data(submission_id=sid)
-    from src.v2.repo import get_submission
     from src.v2.routers.form import show_form_step, show_question
     from src.v2.fsm.steps import get_step
     try:

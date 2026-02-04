@@ -44,7 +44,7 @@ python main.py
 cp .env.example .env
 ```
 
-Запуск (сборка и миграции при старте):
+Запуск (сборка; миграции при AUTO_MIGRATE=true и APP_ENV!=production):
 
 ```bash
 docker compose up --build
@@ -56,7 +56,8 @@ docker compose up --build
 docker compose up -d --build
 ```
 
-Бот поднимается после готовности БД и выполняет `alembic upgrade head && python main.py`.
+Бот поднимается после готовности БД. По умолчанию при старте выполняет миграции (`AUTO_MIGRATE=true`), но только если `APP_ENV!=production`.
+Для продакшена установите `APP_ENV=production` (автомиграции всегда отключены) и запускайте миграции явно: `docker compose run --rm bot alembic upgrade head`.
 
 ### Smoke test (Docker)
 
@@ -66,7 +67,7 @@ docker compose up -d --build
 # 1. Собрать и запустить в фоне
 docker compose up -d --build
 
-# 2. Смотреть логи бота (ожидание: миграции, затем строка "Bot started, DB initialized")
+# 2. Смотреть логи бота (ожидание: миграции при AUTO_MIGRATE=true и APP_ENV!=production, затем строка "Bot started, DB initialized")
 docker compose logs -f bot
 
 # 3. В другом терминале — проверка здоровья БД из контейнера бота (ожидание: вывод "OK", код 0)
@@ -87,6 +88,15 @@ docker compose exec bot python -m src.bot.health
 pytest
 # или
 python -m pytest tests/ -v
+```
+
+## CI checks (local)
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+ruff check .
+pytest
 ```
 
 С аудитом копирайта (все тексты только в `messages.py`, все COPY_ID из кода есть в messages):
@@ -112,7 +122,7 @@ python scripts/audit_copy.py
 
 ## Переменные окружения
 
-Обязательные: `BOT_TOKEN`, `DATABASE_URL`. Остальные опциональны. Полный список в `.env.example`: `BOT_TOKEN`, `DATABASE_URL`, `ADMIN_CHAT_ID`, `FEED_CHAT_ID`, `ADMIN_IDS`, `LOG_LEVEL`, `V2_ENABLED`, `V2_CANARY_MODE`, `V2_ALLOWLIST`. Поддерживается и `ADMIN_TELEGRAM_IDS` (если `ADMIN_IDS` не задан).
+Обязательные: `BOT_TOKEN`, `DATABASE_URL`. Остальные опциональны. Полный список в `.env.example`: `BOT_TOKEN`, `DATABASE_URL`, `ADMIN_CHAT_ID`, `FEED_CHAT_ID`, `ADMIN_IDS`, `LOG_LEVEL`, `APP_ENV`, `AUTO_MIGRATE`, `V2_ENABLED`, `V2_CANARY_MODE`, `V2_ALLOWLIST`. Поддерживается и `ADMIN_TELEGRAM_IDS` (если `ADMIN_IDS` не задан).
 
 **Автопостинг в канал:** задайте в `.env` одну переменную `FEED_CHAT_ID` — канал для публикации после approve (V1 и V2). Значение: `@vibecode777` или числовой id канала (`-100...`). Если не задан — после approve пост в канал не отправляется (в лог пишется warning). Тест публикации: `python scripts/test_feed.py` (без `--dry-run` отправит тестовое сообщение); `python scripts/test_feed.py --dry-run` — только проверка конфига.
 

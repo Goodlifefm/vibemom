@@ -13,7 +13,9 @@ _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(
     logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 )
-logging.basicConfig(level=logging.INFO, handlers=[_handler])
+_root = logging.getLogger()
+_root.setLevel(logging.INFO)
+_root.addHandler(_handler)
 logger = logging.getLogger(__name__)
 
 

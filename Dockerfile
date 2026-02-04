@@ -11,5 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN pip install -e . 2>/dev/null || true
+RUN chmod +x /app/scripts/entrypoint.sh
 
 CMD ["python", "main.py"]

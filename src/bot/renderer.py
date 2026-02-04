@@ -26,7 +26,8 @@ def project_fields_to_answers(project: object) -> dict:
     from src.bot.editor_schema import default_answers
     out = default_answers()
     out["project_title"] = out["title"] = (p.title or "").strip()
-    out["project_what"] = out["description"] = (p.description or "").strip()
+    out["project_what"] = out["description"] = desc
+    out["project_problem"] = desc  # required in editor_schema; legacy has single description blob
     out["stack_ai"] = out["stack"] = (p.stack or "").strip()
     out["link"] = (p.link or "").strip()
     out["econ_time"] = out["price"] = (p.price or "").strip()
