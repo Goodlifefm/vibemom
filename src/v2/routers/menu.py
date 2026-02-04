@@ -14,6 +14,7 @@ from src.v2.repo import (
     get_submission,
     list_submissions_by_user,
     create_submission,
+    delete_submission,
 )
 from src.v2.fsm.states import V2FormSteps
 from src.v2.fsm.steps import get_step, get_step_index, STEP_KEYS
@@ -175,6 +176,7 @@ async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
     from src.v2.routers.form import show_form_step
     await state.set_state(V2FormSteps.answering)
     await state.update_data(current_step_key="q1")
+    await _send_menu_keyboard(callback.message)
     await show_form_step(callback.message, state, 1)
     logger.info("menu_create user_id=%s submission_id=%s", user_id, sub.id)
 
@@ -259,3 +261,61 @@ async def cb_menu_project(callback: CallbackQuery, state: FSMContext) -> None:
         reply_markup=keyboards.menu_current_step_kb(),
         parse_mode="HTML",
     )
+
+
+# ---- Callback: Удалить проект ----
+@router.callback_query(F.data.startswith(callbacks.menu(callbacks.MENU_DELETE) + ":"))
+async def cb_menu_delete(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    try:
+        sid_str = callback.data.split(":", 2)[2]
+        sub_id = uuid.UUID(sid_str)
+    except (ValueError, IndexError):
+        await show_menu_cabinet(callback.message, state)
+        return
+    user = await get_or_create_user(
+        callback.from_user.id if callback.from_user else 0,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
+    )
+    sub = await get_submission(sub_id)
+    if not sub or sub.user_id != user.id:
+        await show_menu_cabinet(callback.message, state)
+        return
+    title = (sub.answers or {}).get("title", copy.UNTITLED_PROJECT) or copy.UNTITLED_PROJECT
+    confirm_text = copy.fmt(copy.DELETE_CONFIRM, title=title[:50])
+    await callback.message.answer(
+        confirm_text,
+        reply_markup=keyboards.delete_confirm_kb(sub_id),
+    )
+
+
+@router.callback_query(F.data.startswith(callbacks.menu(callbacks.MENU_DELETE_YES) + ":"))
+async def cb_menu_delete_yes(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    try:
+        sid_str = callback.data.split(":", 2)[2]
+        sub_id = uuid.UUID(sid_str)
+    except (ValueError, IndexError):
+        await show_menu_cabinet(callback.message, state)
+        return
+    user = await get_or_create_user(
+        callback.from_user.id if callback.from_user else 0,
+        callback.from_user.username if callback.from_user else None,
+        callback.from_user.full_name if callback.from_user else None,
+    )
+    deleted = await delete_submission(sub_id, user.id)
+    if deleted:
+        # Очищаем submission_id из state если это был текущий проект
+        data = await state.get_data()
+        if data.get("submission_id") == str(sub_id):
+            await state.update_data(submission_id=None, current_step_key=None)
+        await callback.message.answer(copy.t(copy.DELETED))
+    await show_menu_cabinet(callback.message, state)
+
+
+@router.callback_query(F.data.startswith(callbacks.menu(callbacks.MENU_DELETE_NO) + ":"))
+async def cb_menu_delete_no(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await callback.message.answer(copy.t(copy.DELETE_CANCELLED))
+    await show_menu_cabinet(callback.message, state)

@@ -437,6 +437,10 @@ V2_BTN_PREVIEW = "👀 Предпросмотр"
 V2_BTN_SEND_MODERATION = "🚀 Отправить на модерацию"
 V2_BTN_HISTORY = "🕓 История"
 V2_BTN_ARCHIVE = "🗑 Архивировать"
+V2_BTN_DELETE = "🗑 Удалить проект"
+V2_DELETE_CONFIRM = "Удалить проект «{title}»?\n\nЭто действие нельзя отменить."
+V2_DELETED = "Проект удалён."
+V2_DELETE_CANCELLED = "Удаление отменено."
 V2_BTN_BACK_TO_PROJECTS = "⬅️ К проектам"
 
 V2_STATUS_DRAFT = "Черновик"
@@ -650,6 +654,10 @@ COPY_IDS = [
     "V2_BTN_SEND_MODERATION",
     "V2_BTN_HISTORY",
     "V2_BTN_ARCHIVE",
+    "V2_BTN_DELETE",
+    "V2_DELETE_CONFIRM",
+    "V2_DELETED",
+    "V2_DELETE_CANCELLED",
     "V2_BTN_BACK_TO_PROJECTS",
     "V2_STATUS_DRAFT",
     "V2_STATUS_PENDING",

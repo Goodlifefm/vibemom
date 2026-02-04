@@ -148,3 +148,22 @@ async def submit_for_moderation(submission_id: uuid.UUID, rendered_post: str) ->
         await session.commit()
         await session.refresh(sub)
         return sub
+
+
+async def delete_submission(submission_id: uuid.UUID, user_id: int) -> bool:
+    """Delete submission if it belongs to user. Returns True if deleted, False if not found or not owner."""
+    if db_session.async_session_maker is None:
+        db_session.init_db()
+    async with db_session.async_session_maker() as session:
+        r = await session.execute(
+            select(Submission).where(
+                Submission.id == submission_id,
+                Submission.user_id == user_id,
+            )
+        )
+        sub = r.scalar_one_or_none()
+        if not sub:
+            return False
+        await session.delete(sub)
+        await session.commit()
+        return True

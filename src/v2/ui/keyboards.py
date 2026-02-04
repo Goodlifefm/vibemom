@@ -267,13 +267,36 @@ def menu_current_step_kb() -> InlineKeyboardMarkup:
     ])
 
 
+def delete_confirm_kb(submission_id: uuid.UUID | str) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения удаления проекта."""
+    sid = str(submission_id)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=V2Copy.get(V2Copy.YES_BUTTON).strip(),
+                callback_data=build_callback(V2_MENU_PREFIX, "delete_yes", sid),
+            ),
+            InlineKeyboardButton(
+                text=V2Copy.get(V2Copy.NO_BUTTON).strip(),
+                callback_data=build_callback(V2_MENU_PREFIX, "delete_no", sid),
+            ),
+        ],
+    ])
+
+
 def projects_list_kb(projects: list[tuple[str, uuid.UUID | str]]) -> InlineKeyboardMarkup:
     rows = []
     for title, sid in projects:
-        rows.append([InlineKeyboardButton(
-            text=V2Copy.get(V2Copy.BTN_OPEN).strip() + f" ({title[:20]})",
-            callback_data=build_callback(V2_CABINET_PREFIX, "open", str(sid)),
-        )])
+        rows.append([
+            InlineKeyboardButton(
+                text=V2Copy.get(V2Copy.BTN_OPEN).strip() + f" ({title[:20]})",
+                callback_data=build_callback(V2_CABINET_PREFIX, "open", str(sid)),
+            ),
+            InlineKeyboardButton(
+                text=V2Copy.get(V2Copy.BTN_DELETE).strip(),
+                callback_data=build_callback(V2_MENU_PREFIX, "delete", str(sid)),
+            ),
+        ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

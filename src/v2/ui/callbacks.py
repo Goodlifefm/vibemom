@@ -37,6 +37,9 @@ MENU_CREATE = "create"
 MENU_HELP = "help"
 MENU_CURRENT_STEP = "current_step"
 MENU_PROJECT = "project"
+MENU_DELETE = "delete"
+MENU_DELETE_YES = "delete_yes"
+MENU_DELETE_NO = "delete_no"
 
 # Form action constants (for form() helper)
 FORM_BACK = "back"

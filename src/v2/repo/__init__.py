@@ -9,6 +9,7 @@ from src.v2.repo.submission import (
     set_status,
     set_moderated,
     submit_for_moderation,
+    delete_submission,
 )
 from src.v2.repo.admin_action import log_admin_action
 
@@ -23,5 +24,6 @@ __all__ = [
     "set_status",
     "set_moderated",
     "submit_for_moderation",
+    "delete_submission",
     "log_admin_action",
 ]
