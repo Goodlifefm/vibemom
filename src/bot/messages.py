@@ -423,6 +423,26 @@ V2_HELP_TEXT = """Команды:
 /my_requests — мои заявки
 /leads — мои лиды (продавцам)"""
 
+# Persistent Menu UI (cabinet menu refactor)
+V2_MENU_PERSISTENT_BTN = "☰ Меню"
+V2_MENU_SCREEN_TITLE = "Главное меню"
+V2_MENU_CONTINUE_WIZARD = "🧩 Продолжить заполнение"
+V2_MENU_PREVIEW = "👁 Предпросмотр"
+V2_MENU_DRAFTS = "🗂 Черновики"
+V2_MENU_PUBLICATIONS = "📌 Публикации"
+V2_MENU_SETTINGS = "⚙️ Настройки"
+V2_MENU_HELP_BTN = "❓ Помощь"
+V2_MENU_BACK = "↩️ Вернуться"
+
+# Placeholder screens for new menu sections
+V2_DRAFTS_HEADER = "🗂 Черновики"
+V2_DRAFTS_EMPTY = "У вас пока нет черновиков. Начните заполнение проекта."
+V2_PUBLICATIONS_HEADER = "📌 Публикации"
+V2_PUBLICATIONS_EMPTY = "У вас пока нет опубликованных проектов."
+V2_SETTINGS_HEADER = "⚙️ Настройки"
+V2_SETTINGS_PLACEHOLDER = "Настройки пока недоступны. Скоро здесь появятся опции."
+V2_MENU_NO_ACTIVE_WIZARD = "Нет активного заполнения. Создайте новый проект."
+
 V2_HOW_IT_WORKS = "Создай → заполни → отправь → после одобрения попадёт в ленту. В любой момент можно вернуться к редактированию."
 
 V2_MY_PROJECTS_HEADER = "📦 Мои проекты"
@@ -719,6 +739,22 @@ COPY_IDS = [
     "V2_MOD_APPROVED_LABEL",
     "V2_MOD_NEEDS_FIX_LABEL",
     "V2_MOD_REJECTED_LABEL",
+    "V2_MENU_PERSISTENT_BTN",
+    "V2_MENU_SCREEN_TITLE",
+    "V2_MENU_CONTINUE_WIZARD",
+    "V2_MENU_PREVIEW",
+    "V2_MENU_DRAFTS",
+    "V2_MENU_PUBLICATIONS",
+    "V2_MENU_SETTINGS",
+    "V2_MENU_HELP_BTN",
+    "V2_MENU_BACK",
+    "V2_DRAFTS_HEADER",
+    "V2_DRAFTS_EMPTY",
+    "V2_PUBLICATIONS_HEADER",
+    "V2_PUBLICATIONS_EMPTY",
+    "V2_SETTINGS_HEADER",
+    "V2_SETTINGS_PLACEHOLDER",
+    "V2_MENU_NO_ACTIVE_WIZARD",
 ]
 
 

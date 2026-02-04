@@ -270,20 +270,26 @@ def test_render_project_post_missing_optional_no_crash():
 
 
 def test_answers_to_project_fields_v2_dev_cost():
-    """V2 answers: budget_hidden / econ_dev_cost HIDDEN => не раскрываю; range => formatted."""
+    """V2 answers: budget_hidden / econ_dev_cost HIDDEN => скрыта; range => formatted."""
     from src.bot.renderer import answers_to_project_fields
-    # New budget format
+    # New budget format - hidden
     answers = {"project_title": "P", "budget_hidden": True}
     fields = answers_to_project_fields(answers)
-    assert fields.get("price") == "не раскрываю"
+    assert fields.get("price") == "скрыта"
+    
+    # New budget format - range
     answers_budget = {"project_title": "P", "budget_min": 50000, "budget_max": 120000, "budget_currency": "RUB"}
     fields_budget = answers_to_project_fields(answers_budget)
     assert "50" in (fields_budget.get("price") or "")
     assert "120" in (fields_budget.get("price") or "")
-    # Legacy econ_dev_cost format (backward compat)
+    assert "₽" in (fields_budget.get("price") or "")
+    
+    # Legacy econ_dev_cost format (backward compat) - hidden
     answers_legacy = {"project_title": "P", "econ_dev_cost_currency": "HIDDEN"}
     fields_legacy = answers_to_project_fields(answers_legacy)
-    assert fields_legacy.get("price") == "не раскрываю"
+    assert fields_legacy.get("price") == "скрыта"
+    
+    # Legacy econ_dev_cost format - range
     answers2 = {"project_title": "P", "econ_dev_cost_currency": "RUB", "econ_dev_cost_min": 50000, "econ_dev_cost_max": 120000}
     fields2 = answers_to_project_fields(answers2)
     assert "50" in (fields2.get("price") or "")

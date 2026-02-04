@@ -13,14 +13,30 @@ from src.v2.ui import callbacks as v2_callbacks
 PS = "ps"
 MENU_PREFIX = v2_callbacks.MENU_PREFIX
 
+# Callback prefixes for namespacing
+CB_MENU = "menu"  # menu:* actions
+CB_WIZ = "wiz"    # wiz:* wizard actions
+CB_POST = "post"  # post:* publish/moderation
 
-def reply_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Persistent reply keyboard with single button: 🏠 Меню. Shown from any state."""
+
+def persistent_reply_kb() -> ReplyKeyboardMarkup:
+    """
+    Persistent bottom reply keyboard with '☰ Меню' button.
+    Always visible under input field. Works from any state.
+    """
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=get_copy("V2_MENU_BTN").strip())]],
+        keyboard=[[KeyboardButton(text=get_copy("V2_MENU_PERSISTENT_BTN").strip())]],
         resize_keyboard=True,
         one_time_keyboard=False,
     )
+
+
+def reply_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Persistent reply keyboard with single button: 🏠 Меню. Shown from any state.
+    DEPRECATED: Use persistent_reply_kb() for the new '☰ Меню' button.
+    """
+    # Keep backward compatibility but use new persistent button
+    return persistent_reply_kb()
 
 
 def menu_cabinet_inline_kb(
@@ -144,3 +160,133 @@ def nav_keyboard(
     if not row:
         return InlineKeyboardMarkup(inline_keyboard=[])
     return InlineKeyboardMarkup(inline_keyboard=[row])
+
+
+# =============================================================================
+# Cabinet Menu (persistent menu refactor)
+# =============================================================================
+
+def cabinet_menu_inline_kb(
+    *,
+    has_active_wizard: bool = False,
+    has_drafts: bool = False,
+    has_publications: bool = False,
+) -> InlineKeyboardMarkup:
+    """
+    Main cabinet menu inline keyboard.
+    Shown when user presses "☰ Меню" button.
+    
+    Structure:
+    - 🧩 Продолжить заполнение (if has_active_wizard)
+    - 👁 Предпросмотр
+    - 🗂 Черновики
+    - 📌 Публикации
+    - ⚙️ Настройки
+    - ❓ Помощь
+    - ↩️ Вернуться (same as continue wizard)
+    
+    Callback namespace: menu:*
+    """
+    rows = []
+    
+    # Continue wizard (only if there's an active wizard)
+    if has_active_wizard:
+        rows.append([InlineKeyboardButton(
+            text=get_copy("V2_MENU_CONTINUE_WIZARD").strip(),
+            callback_data=f"{CB_MENU}:continue",
+        )])
+    
+    # Preview (only if has active wizard with data)
+    if has_active_wizard:
+        rows.append([InlineKeyboardButton(
+            text=get_copy("V2_MENU_PREVIEW").strip(),
+            callback_data=f"{CB_MENU}:preview",
+        )])
+    
+    # Drafts and Publications
+    rows.append([
+        InlineKeyboardButton(
+            text=get_copy("V2_MENU_DRAFTS").strip(),
+            callback_data=f"{CB_MENU}:drafts",
+        ),
+        InlineKeyboardButton(
+            text=get_copy("V2_MENU_PUBLICATIONS").strip(),
+            callback_data=f"{CB_MENU}:posts",
+        ),
+    ])
+    
+    # Settings and Help
+    rows.append([
+        InlineKeyboardButton(
+            text=get_copy("V2_MENU_SETTINGS").strip(),
+            callback_data=f"{CB_MENU}:settings",
+        ),
+        InlineKeyboardButton(
+            text=get_copy("V2_MENU_HELP_BTN").strip(),
+            callback_data=f"{CB_MENU}:help",
+        ),
+    ])
+    
+    # Back / Return (same as continue if wizard exists, else create new)
+    if has_active_wizard:
+        rows.append([InlineKeyboardButton(
+            text=get_copy("V2_MENU_BACK").strip(),
+            callback_data=f"{CB_MENU}:continue",
+        )])
+    else:
+        rows.append([InlineKeyboardButton(
+            text=get_copy("V2_MENU_CREATE").strip(),
+            callback_data=f"{CB_MENU}:create",
+        )])
+    
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def menu_back_kb() -> InlineKeyboardMarkup:
+    """Simple 'back to menu' button for placeholder screens."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=get_copy("V2_MENU_BACK").strip(),
+            callback_data=f"{CB_MENU}:back_to_menu",
+        )],
+    ])
+
+
+def drafts_list_kb(drafts: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    """
+    Drafts list keyboard.
+    Each draft has title and submission_id.
+    Callback: menu:open_draft:{submission_id}
+    """
+    rows = []
+    for title, sid in drafts:
+        display = title[:30] if title else "Без названия"
+        rows.append([InlineKeyboardButton(
+            text=f"📝 {display}",
+            callback_data=f"{CB_MENU}:open_draft:{sid}",
+        )])
+    rows.append([InlineKeyboardButton(
+        text=get_copy("V2_MENU_BACK").strip(),
+        callback_data=f"{CB_MENU}:back_to_menu",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def publications_list_kb(publications: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    """
+    Publications list keyboard.
+    Each publication has title and project_id.
+    Callback: menu:view_post:{project_id}
+    """
+    rows = []
+    for title, pid in publications:
+        display = title[:30] if title else "Без названия"
+        rows.append([InlineKeyboardButton(
+            text=f"📌 {display}",
+            callback_data=f"{CB_MENU}:view_post:{pid}",
+        )])
+    rows.append([InlineKeyboardButton(
+        text=get_copy("V2_MENU_BACK").strip(),
+        callback_data=f"{CB_MENU}:back_to_menu",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

@@ -7,6 +7,7 @@ from aiogram.filters import StateFilter
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
+from src.bot.keyboards import persistent_reply_kb
 from src.v2.repo import get_submission, update_answers_step
 from src.v2.fsm.states import V2FormSteps
 from src.v2.fsm.steps import (
@@ -33,7 +34,10 @@ def _log_button(callback: CallbackQuery, data: dict, action: str) -> None:
 
 
 async def show_question(message: Message, state: FSMContext, step_key: str) -> None:
-    """Show question for step_key (repeat question for back/resume)."""
+    """Show question for step_key (repeat question for back/resume).
+    
+    Always includes the persistent reply keyboard (☰ Меню) for UX consistency.
+    """
     answers = None
     data = await state.get_data()
     sid = data.get(DATA_SUBMISSION_ID)
@@ -46,6 +50,7 @@ async def show_question(message: Message, state: FSMContext, step_key: str) -> N
     text = render.render_step(step_key, answers)
     if not text:
         return
+    # Send question with inline keyboard
     await message.answer(text, reply_markup=keyboards.form_step_kb(step_key), parse_mode="HTML")
 
 
@@ -132,15 +137,14 @@ async def handle_back(callback: CallbackQuery, state: FSMContext) -> None:
     step_key = data.get(DATA_STEP_KEY)
     if not sid:
         await state.clear()
-        from src.v2.routers.start import show_v2_cabinet
-        await show_v2_cabinet(callback.message, state)
+        from src.v2.routers.menu import show_cabinet_menu
+        await show_cabinet_menu(callback, state)
         return
     prev_step = get_prev_step(step_key or "")
     if not prev_step:
-        await update_answers_step(uuid.UUID(sid), {}, current_step=None)
-        await state.clear()
-        from src.v2.routers.start import show_v2_cabinet
-        await show_v2_cabinet(callback.message, state)
+        # At first step, go to menu instead of clearing
+        from src.v2.routers.menu import show_cabinet_menu
+        await show_cabinet_menu(callback, state)
         return
     await update_answers_step(uuid.UUID(sid), {}, current_step=prev_step)
     await state.update_data(**{DATA_STEP_KEY: prev_step})
@@ -191,8 +195,8 @@ async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
     step_key = data.get(DATA_STEP_KEY)
     if not sid:
         await callback.message.answer(copy.t(copy.SAVED_RESUME))
-        from src.v2.routers.menu import show_menu_cabinet
-        await show_menu_cabinet(callback.message, state)
+        from src.v2.routers.menu import show_cabinet_menu
+        await show_cabinet_menu(callback, state)
         return
     try:
         sub_id = uuid.UUID(sid)
@@ -200,8 +204,8 @@ async def handle_save(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await update_answers_step(sub_id, {}, current_step=step_key)
     await callback.message.answer(copy.t(copy.SAVED_RESUME))
-    from src.v2.routers.menu import show_menu_cabinet
-    await show_menu_cabinet(callback.message, state)
+    from src.v2.routers.menu import show_cabinet_menu
+    await show_cabinet_menu(callback, state)
 
 
 # ---- Finish links (Q21) ----

@@ -119,8 +119,8 @@ async def cb_submit_yes(callback: CallbackQuery, state: FSMContext) -> None:
     sub = await get_submission(sub_id)
     if not sub:
         await state.clear()
-        from src.v2.routers.menu import show_menu_cabinet
-        await show_menu_cabinet(callback.message, state)
+        from src.v2.routers.menu import show_cabinet_menu
+        await show_cabinet_menu(callback, state)
         return
     # Same renderer as preview so published post matches preview layout exactly
     publish_result = render_post(sub.answers or {}, mode="publish")
@@ -161,16 +161,16 @@ async def cb_submit_yes(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await callback.message.answer(V2Copy.get(V2Copy.PREVIEW_SUCCESS))
     await state.clear()
-    from src.v2.routers.menu import show_menu_cabinet
-    await show_menu_cabinet(callback.message, state)
+    from src.v2.routers.menu import show_cabinet_menu
+    await show_cabinet_menu(callback, state)
 
 
 @router.callback_query(F.data == f"{PREFIX}:menu")
 async def cb_preview_menu(callback: CallbackQuery, state: FSMContext) -> None:
     """From Preview: go to cabinet (global escape hatch)."""
     await callback.answer()
-    from src.v2.routers.menu import show_menu_cabinet
-    await show_menu_cabinet(callback, state)
+    from src.v2.routers.menu import show_cabinet_menu
+    await show_cabinet_menu(callback, state)
 
 
 @router.callback_query(F.data == f"{PREFIX}:back")

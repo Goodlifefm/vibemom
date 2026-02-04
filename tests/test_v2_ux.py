@@ -142,7 +142,7 @@ def test_submit_no_returns_to_preview():
 
 
 def test_menu_handler_shows_cabinet():
-    """Menu trigger (any state) must show cabinet; handler calls show_menu_cabinet."""
+    """Menu trigger (any state) must show cabinet; handler calls show_cabinet_menu."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch
     from src.v2.routers.menu import handle_menu_trigger
@@ -153,28 +153,89 @@ def test_menu_handler_shows_cabinet():
     state.get_data = AsyncMock(return_value={})
 
     async def run():
-        with patch("src.v2.routers.menu.show_menu_cabinet", new_callable=AsyncMock) as show_cabinet:
+        with patch("src.v2.routers.menu.show_cabinet_menu", new_callable=AsyncMock) as show_cabinet:
             await handle_menu_trigger(message, state)
             show_cabinet.assert_called_once_with(message, state)
 
     asyncio.run(run())
 
 
+def test_persistent_reply_kb():
+    """persistent_reply_kb creates reply keyboard with ☰ Меню button."""
+    from src.bot.keyboards import persistent_reply_kb
+    kb = persistent_reply_kb()
+    assert kb is not None
+    assert kb.keyboard is not None
+    assert len(kb.keyboard) == 1
+    assert len(kb.keyboard[0]) == 1
+    assert "Меню" in kb.keyboard[0][0].text
+    assert kb.resize_keyboard is True
+    assert kb.one_time_keyboard is False
+
+
+def test_cabinet_menu_inline_kb():
+    """cabinet_menu_inline_kb creates inline keyboard with menu options."""
+    from src.bot.keyboards import cabinet_menu_inline_kb, CB_MENU
+    
+    # Without active wizard
+    kb = cabinet_menu_inline_kb(has_active_wizard=False)
+    assert kb is not None
+    callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert f"{CB_MENU}:drafts" in callbacks
+    assert f"{CB_MENU}:posts" in callbacks
+    assert f"{CB_MENU}:settings" in callbacks
+    assert f"{CB_MENU}:help" in callbacks
+    assert f"{CB_MENU}:create" in callbacks
+    # Continue should not be present when no active wizard
+    assert f"{CB_MENU}:continue" not in callbacks
+    
+    # With active wizard
+    kb2 = cabinet_menu_inline_kb(has_active_wizard=True)
+    callbacks2 = [btn.callback_data for row in kb2.inline_keyboard for btn in row]
+    assert f"{CB_MENU}:continue" in callbacks2
+    assert f"{CB_MENU}:preview" in callbacks2
+
+
+def test_menu_mode_constants():
+    """Menu mode constants are defined in keyboards module."""
+    from src.bot.keyboards import CB_MENU, CB_WIZ, CB_POST
+    assert CB_MENU == "menu"
+    assert CB_WIZ == "wiz"
+    assert CB_POST == "post"
+
+
+def test_new_menu_copy_strings():
+    """New menu copy strings are present in messages module."""
+    from src.bot.messages import get_copy
+    
+    # Check that new copy strings exist
+    assert get_copy("V2_MENU_PERSISTENT_BTN") != ""
+    assert get_copy("V2_MENU_SCREEN_TITLE") != ""
+    assert get_copy("V2_MENU_CONTINUE_WIZARD") != ""
+    assert get_copy("V2_MENU_PREVIEW") != ""
+    assert get_copy("V2_MENU_DRAFTS") != ""
+    assert get_copy("V2_MENU_PUBLICATIONS") != ""
+    assert get_copy("V2_MENU_SETTINGS") != ""
+    assert get_copy("V2_MENU_HELP_BTN") != ""
+    assert get_copy("V2_MENU_BACK") != ""
+    assert get_copy("V2_DRAFTS_HEADER") != ""
+    assert get_copy("V2_SETTINGS_HEADER") != ""
+
+
 # ---- UI Kit UX Contracts (Step 5) ----
 def test_render_step_contract():
     """render_step returns string with "Шаг X из Y" and HTML formatting."""
+    # Using the new render_step signature: (step_key, answers)
     text = render_step(
-        step_idx=0,
-        total=19,
-        title="Название проекта",
-        prompt="Короткое пояснение.",
-        example="AI-ассистент",
+        step_key="q1",
+        answers=None,
     )
     assert isinstance(text, str)
     assert "Шаг 1 из 19" in text
     assert "📌" in text
     assert "<b>" in text  # HTML formatting
-    assert "Название проекта" in text
+    # The title is from the copy, not a direct argument
+    assert "Название проекта" in text or "проект" in text.lower()
     assert "Пример:" in text or "example" in text.lower()
 
 

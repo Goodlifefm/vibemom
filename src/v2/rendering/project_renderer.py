@@ -55,29 +55,41 @@ def _format_price_from_answers(answers: dict) -> str | None:
     """
     Extract price string from answers.
     Supports: budget_min/max/currency/hidden (new) and currency/cost/cost_max (legacy).
+    
+    Price formats:
+    - hidden → "скрыта"
+    - fixed → "500 ₽" or "500 $"
+    - range → "500–1500 ₽" or "500–1500 $"
     """
     budget_hidden = answers.get("budget_hidden")
     if budget_hidden is True:
-        return "не раскрываю"
+        return "скрыта"
+    
     mn = answers.get("budget_min")
     mx = answers.get("budget_max")
     currency = answers.get("budget_currency") or answers.get("currency") or ""
+    
     if mn is not None or mx is not None or currency:
         try:
             mn_val = int(mn) if mn is not None else None
             mx_val = int(mx) if mx is not None else None
         except (TypeError, ValueError):
             mn_val = mx_val = None
+        
         cur = str(currency or "").strip().upper() or "RUB"
+        symbol = "₽" if cur == "RUB" else "$" if cur == "USD" else cur
+        
         if mn_val is not None and mx_val is not None:
-            if cur == "RUB":
-                return f"₽ {mn_val:,} – {mx_val:,}".replace(",", " ")
-            if cur == "USD":
-                return f"$ {mn_val:,} – {mx_val:,}".replace(",", " ")
+            # Range: "500–1500 ₽"
+            return f"{mn_val:,}–{mx_val:,} {symbol}".replace(",", " ")
         if mn_val is not None:
-            return (f"₽ {mn_val:,}" if cur == "RUB" else f"$ {mn_val:,}").replace(",", " ")
+            # Fixed: "500 ₽"
+            return f"{mn_val:,} {symbol}".replace(",", " ")
         if mx_val is not None:
-            return (f"₽ {mx_val:,}" if cur == "RUB" else f"$ {mx_val:,}").replace(",", " ")
+            # Max only: "до 1500 ₽"
+            return f"до {mx_val:,} {symbol}".replace(",", " ")
+    
+    # Legacy fallback: cost/cost_max
     cost = answers.get("cost")
     cost_max = answers.get("cost_max")
     if cost is not None or cost_max is not None:
@@ -86,6 +98,7 @@ def _format_price_from_answers(answers: dict) -> str | None:
         if cur:
             return " – ".join(p for p in parts if p) + f" {cur}".strip()
         return " – ".join(p for p in parts if p).strip() or None
+    
     return None
 
 

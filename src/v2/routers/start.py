@@ -17,9 +17,8 @@ from src.v2.repo import (
 from src.v2.fsm.states import V2FormSteps
 from src.v2.routers.preview import show_preview
 from src.bot.database.models import ProjectStatus
-from src.bot.keyboards import reply_menu_keyboard
+from src.bot.keyboards import persistent_reply_kb
 from src.v2.ui import callbacks, copy, keyboards
-from src.bot.keyboards import reply_menu_keyboard
 
 router = Router()
 PREFIX = callbacks.CABINET_PREFIX
@@ -37,7 +36,7 @@ def _status_copy(status: ProjectStatus) -> str:
 
 
 async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: FSMContext | None = None) -> None:
-    """Show V2 cabinet (greeting + menu inline kb) and set persistent 🏠 Меню reply keyboard."""
+    """Show V2 cabinet (greeting + menu inline kb) and set persistent ☰ Меню reply keyboard."""
     target = message_or_callback.message if isinstance(message_or_callback, CallbackQuery) else message_or_callback
     show_resume = False
     if state:
@@ -45,13 +44,13 @@ async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: F
         show_resume = bool(data.get("submission_id"))
     kb = keyboards.cabinet_inline_kb(show_resume=show_resume)
     await target.answer(copy.t(copy.CABINET_GREETING), reply_markup=kb)
-    await target.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
+    await target.answer(copy.t(copy.MENU_HINT), reply_markup=persistent_reply_kb())
 
 
 async def _do_resume(message: Message, state: FSMContext) -> None:
     """Load active submission, restore current_step, show question (for /resume and Resume button)."""
     from src.v2.repo import get_or_create_user
-    await message.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
+    await message.answer(copy.t(copy.MENU_HINT), reply_markup=persistent_reply_kb())
     user = await get_or_create_user(
         message.from_user.id if message.from_user else 0,
         message.from_user.username if message.from_user else None,
@@ -111,7 +110,7 @@ async def cb_create(callback: CallbackQuery, state: FSMContext) -> None:
     from src.v2.routers.form import show_form_step
     await state.set_state(V2FormSteps.answering)
     await state.update_data(current_step_key="q1")
-    await callback.message.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
+    await callback.message.answer(copy.t(copy.MENU_HINT), reply_markup=persistent_reply_kb())
     await show_form_step(callback.message, state, 1)
 
 

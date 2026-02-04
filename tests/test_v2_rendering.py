@@ -44,13 +44,23 @@ def test_project_post_structure():
 
 def test_submission_answers_budget_format():
     """submission_answers_to_blocks: budget_min/max/currency/hidden produce price."""
+    # Hidden price
     answers = {"title": "X", "budget_hidden": True}
     blocks = submission_answers_to_blocks(answers)
-    assert blocks.get("price") == "не раскрываю"
+    assert blocks.get("price") == "скрыта"
+    
+    # Range price
     answers2 = {"title": "X", "budget_min": 150000, "budget_max": 300000, "budget_currency": "RUB"}
     blocks2 = submission_answers_to_blocks(answers2)
     assert "150" in (blocks2.get("price") or "")
     assert "300" in (blocks2.get("price") or "")
+    assert "₽" in (blocks2.get("price") or "")
+    
+    # Fixed price
+    answers3 = {"title": "X", "budget_min": 500, "budget_currency": "USD"}
+    blocks3 = submission_answers_to_blocks(answers3)
+    assert "500" in (blocks3.get("price") or "")
+    assert "$" in (blocks3.get("price") or "")
 
 
 def test_optional_sections_omitted():

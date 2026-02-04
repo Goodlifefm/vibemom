@@ -121,10 +121,17 @@ def answers_to_project_fields(answers: dict) -> dict[str, str]:
 
 
 def _format_dev_cost_v2(answers: dict) -> str:
-    """Format dev cost: HIDDEN => не раскрываю; range => ₽ 50 000 – 120 000.
-    Supports budget_* (new single-step) and econ_dev_cost_* (legacy) keys."""
+    """Format dev cost: HIDDEN => скрыта; range => 50 000–120 000 ₽.
+    
+    Supports budget_* (new single-step) and econ_dev_cost_* (legacy) keys.
+    
+    Price formats:
+    - hidden → "скрыта"
+    - fixed → "500 ₽"
+    - range → "500–1500 ₽"
+    """
     if answers.get("budget_hidden") is True:
-        return "не раскрываю"
+        return "скрыта"
     mn = answers.get("budget_min")
     mx = answers.get("budget_max")
     cur = (answers.get("budget_currency") or "").strip().upper()
@@ -138,7 +145,7 @@ def _format_dev_cost_v2(answers: dict) -> str:
     else:
         currency = (answers.get("econ_dev_cost_currency") or "").strip().upper()
         if currency == "HIDDEN":
-            return "не раскрываю"
+            return "скрыта"
         min_v = answers.get("econ_dev_cost_min")
         max_v = answers.get("econ_dev_cost_max")
     if min_v is not None or max_v is not None:
@@ -147,16 +154,13 @@ def _format_dev_cost_v2(answers: dict) -> str:
             mx = int(max_v) if max_v is not None else None
         except (TypeError, ValueError):
             return ""
+        symbol = "₽" if currency == "RUB" else "$" if currency == "USD" else currency
         if mn is not None and mx is not None:
-            sep = " – "
-            if currency == "RUB":
-                return f"₽ {mn:,} {sep} {mx:,}".replace(",", " ")
-            if currency == "USD":
-                return f"$ {mn:,} {sep} {mx:,}".replace(",", " ")
+            return f"{mn:,}–{mx:,} {symbol}".replace(",", " ")
         if mn is not None:
-            return f"₽ {mn:,}".replace(",", " ") if currency == "RUB" else f"$ {mn:,}".replace(",", " ") if currency == "USD" else str(mn)
+            return f"{mn:,} {symbol}".replace(",", " ")
         if mx is not None:
-            return f"₽ {mx:,}".replace(",", " ") if currency == "RUB" else f"$ {mx:,}".replace(",", " ") if currency == "USD" else str(mx)
+            return f"до {mx:,} {symbol}".replace(",", " ")
     return ""
 
 
