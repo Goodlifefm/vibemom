@@ -25,6 +25,47 @@ FIX_PREFIX = V2_FIX_PREFIX
 BACK_PREFIX = V2_FORM_PREFIX
 CANCEL_PREFIX = V2_FORM_PREFIX
 SUBMIT_PREFIX = V2_PREVIEW_PREFIX
+CAB_PREFIX = V2_CABINET_PREFIX  # backward compat alias
+
+# Menu action constants (for menu() helper)
+MENU_RESUME = "resume"
+MENU_RESTART = "restart"
+MENU_RESTART_YES = "restart_yes"
+MENU_RESTART_NO = "restart_no"
+MENU_PROJECTS = "projects"
+MENU_CREATE = "create"
+MENU_HELP = "help"
+MENU_CURRENT_STEP = "current_step"
+MENU_PROJECT = "project"
+
+# Form action constants (for form() helper)
+FORM_BACK = "back"
+FORM_SKIP = "skip"
+FORM_SAVE = "save"
+FORM_FINISH_LINKS = "finish_links"
+
+
+def menu(action: str) -> str:
+    """
+    Build menu callback_data: menu(action) -> "v2menu:{action}".
+    
+    Examples:
+    - menu(MENU_RESUME) -> "v2menu:resume"
+    - menu("help") -> "v2menu:help"
+    """
+    return build_callback(V2_MENU_PREFIX, action)
+
+
+def form(action: str) -> str:
+    """
+    Build form callback_data: form(action) -> "v2form:{action}".
+    
+    Examples:
+    - form(FORM_BACK) -> "v2form:back"
+    - form("skip") -> "v2form:skip"
+    """
+    return build_callback(V2_FORM_PREFIX, action)
+
 
 def parse_callback(data: str) -> tuple[str | None, str | None, list[str]]:
     """

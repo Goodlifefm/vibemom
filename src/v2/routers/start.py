@@ -20,7 +20,7 @@ from src.bot.keyboards import reply_menu_keyboard
 from src.v2.ui import callbacks, copy, keyboards
 
 router = Router()
-PREFIX = callbacks.CAB_PREFIX
+PREFIX = callbacks.CABINET_PREFIX
 
 
 def _status_copy(status: ProjectStatus) -> str:
@@ -38,21 +38,9 @@ async def show_v2_cabinet(message_or_callback: Message | CallbackQuery, state: F
     """Show V2 cabinet (greeting + menu inline kb) and set persistent 🏠 Меню reply keyboard."""
     target = message_or_callback.message if isinstance(message_or_callback, CallbackQuery) else message_or_callback
     show_resume = False
-    has_projects = False
     if state:
         data = await state.get_data()
         show_resume = bool(data.get("submission_id"))
-    try:
-        u = getattr(message_or_callback, "from_user", None)
-        user = await get_or_create_user(
-            u.id if u else 0,
-            u.username if u else None,
-            u.full_name if u else None,
-        )
-        subs = await list_submissions_by_user(user.id, limit=1)
-        has_projects = bool(subs)
-    except Exception:
-        pass
     kb = keyboards.cabinet_inline_kb(show_resume=show_resume)
     await target.answer(copy.t(copy.CABINET_GREETING), reply_markup=kb)
     await target.answer(copy.t(copy.MENU_HINT), reply_markup=reply_menu_keyboard())
@@ -133,11 +121,11 @@ async def cb_projects(callback: CallbackQuery, state: FSMContext) -> None:
     subs = await list_submissions_by_user(user.id, limit=5)
     if not subs:
         await callback.message.answer(
-            V2Copy.get(V2Copy.MY_PROJECTS_HEADER) + "\n\n" + V2Copy.get(V2Copy.MY_PROJECTS_EMPTY),
+            copy.t(copy.MY_PROJECTS_HEADER) + "\n\n" + copy.t(copy.MY_PROJECTS_EMPTY),
             reply_markup=keyboards.cabinet_inline_kb(show_resume=bool((await state.get_data()).get("submission_id"))),
         )
         return
-    text = V2Copy.get(V2Copy.MY_PROJECTS_HEADER) + "\n\n"
+    text = copy.t(copy.MY_PROJECTS_HEADER) + "\n\n"
     projects: list[tuple[str, uuid.UUID]] = []
     for s in subs:
         title = (s.answers or {}).get("title", copy.CARD_EMPTY_VALUE) or copy.CARD_EMPTY_VALUE
