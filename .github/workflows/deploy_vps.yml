@@ -49,7 +49,7 @@ jobs:
             echo "== Update code =="
             git fetch --all
             git checkout v2-editor
-            git pull --ff-only origin v2-editor
+            git reset --hard origin/v2-editor
 
             echo "== Build & run =="
             docker compose pull || true
