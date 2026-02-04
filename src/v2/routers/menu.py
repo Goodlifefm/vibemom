@@ -163,8 +163,10 @@ async def cb_menu_projects(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == callbacks.menu(callbacks.MENU_CREATE))
 async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
+    user_id = callback.from_user.id if callback.from_user else 0
+    logger.info("create project clicked user_id=%s", user_id)
     user = await get_or_create_user(
-        callback.from_user.id if callback.from_user else 0,
+        user_id,
         callback.from_user.username if callback.from_user else None,
         callback.from_user.full_name if callback.from_user else None,
     )
@@ -174,7 +176,7 @@ async def cb_menu_create(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(V2FormSteps.answering)
     await state.update_data(current_step_key="q1")
     await show_form_step(callback.message, state, 1)
-    logger.info("menu_create user_id=%s", callback.from_user.id if callback.from_user else 0)
+    logger.info("menu_create user_id=%s submission_id=%s", user_id, sub.id)
 
 
 # ---- Callback: Помощь ----

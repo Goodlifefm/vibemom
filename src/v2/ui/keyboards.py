@@ -12,6 +12,7 @@ from src.v2.ui.callbacks import (
     V2_MOD_PREFIX,
     V2_FIX_PREFIX,
     V2_CABINET_PREFIX,
+    MENU_CREATE,
     build_callback,
 )
 from src.v2.ui.copy import V2Copy
@@ -159,7 +160,7 @@ def kb_cabinet(
         )],
         [InlineKeyboardButton(
             text=V2Copy.get(V2Copy.MENU_CREATE).strip(),
-            callback_data=build_callback(V2_MENU_PREFIX, "create"),
+            callback_data=build_callback(V2_MENU_PREFIX, MENU_CREATE),
         )],
         [InlineKeyboardButton(
             text=V2Copy.get(V2Copy.MENU_HELP).strip(),
