@@ -1,24 +1,43 @@
 # Mini App Deployment Guide
 
-Production-ready deployment guide for Telegram Mini App: WebApp frontend on Vercel (HTTPS) + API on VPS (Docker).
+Production-ready deployment guide for Telegram Mini App: WebApp frontend on Vercel (HTTPS) + API on VPS (Docker + Nginx HTTPS).
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Telegram Bot   │     │   Mini App API  │     │  Mini App UI    │
-│  (aiogram)      │     │   (FastAPI)     │     │  (React+Vite)   │
-│                 │     │                 │     │                 │
-│  VPS/Docker     │     │  VPS/Docker     │     │  Vercel         │
-│  :polling       │────▶│  :8000          │◀────│  :443 (HTTPS)   │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-         │                       │                       │
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         PostgreSQL                               │
-└─────────────────────────────────────────────────────────────────┘
+                         Internet
+                            │
+           ┌────────────────┼────────────────┐
+           │                │                │
+           ▼                ▼                ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  Mini App UI    │  │     Nginx       │  │  Telegram Bot   │
+│  (React+Vite)   │  │  (SSL Proxy)    │  │  (aiogram)      │
+│                 │  │                 │  │                 │
+│  Vercel         │  │  VPS :443/:80   │  │  VPS/Docker     │
+│  :443 (HTTPS)   │  │                 │  │  :polling       │
+└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
+         │                    │ proxy              │
+         │                    ▼                    │
+         │           ┌─────────────────┐           │
+         └──────────▶│   Mini App API  │◀──────────┘
+                     │   (FastAPI)     │
+                     │  :8000 internal │
+                     └────────┬────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │   PostgreSQL    │
+                     │   :5432         │
+                     └─────────────────┘
 ```
+
+**Key components:**
+- **Vercel**: Hosts Mini App frontend (React) with automatic HTTPS
+- **Nginx**: HTTPS reverse proxy on VPS, terminates SSL, proxies to API
+- **API**: FastAPI service (internal port 8000, not exposed to internet)
+- **Bot**: Telegram bot with polling
+- **PostgreSQL**: Shared database
 
 ## Step 1: Deploy Frontend to Vercel
 
@@ -77,18 +96,34 @@ vercel --prod
 
 ## Step 3: Configure VPS Environment
 
-### 3.1 Update `.env` on VPS
+### 3.1 DNS Configuration
+
+Add A record pointing API subdomain to VPS IP:
+
+| Type | Name | Value | TTL |
+|------|------|-------|-----|
+| A | api | `<VPS_IP>` | 300 |
+
+Example: `api.vibemom.com` → `89.191.226.233`
+
+Verify DNS propagation:
+```bash
+dig api.<API_DOMAIN>
+# Should show your VPS IP
+```
+
+### 3.2 Update `.env` on VPS
 
 ```bash
 # Mini App Frontend URL (from Vercel)
-WEBAPP_URL=https://your-app.vercel.app
+WEBAPP_URL=<WEBAPP_URL>
 
-# Public API URL (your domain with SSL, or IP:port for debug)
-API_PUBLIC_URL=https://api.yourdomain.com
+# Public API URL (your domain with SSL)
+API_PUBLIC_URL=https://<API_DOMAIN>
 
 # CORS origins (auto-includes WEBAPP_URL + localhost)
-# Add extra origins if needed:
-WEBAPP_ORIGINS=https://web.telegram.org
+# Add Telegram origins for production
+ALLOWED_ORIGINS=<WEBAPP_URL>,https://web.telegram.org,https://t.me
 
 # JWT secret (generate secure random string!)
 API_JWT_SECRET=your-very-long-secure-random-string-here
@@ -97,38 +132,94 @@ API_JWT_SECRET=your-very-long-secure-random-string-here
 TG_INIT_DATA_SKIP_VERIFY=false
 ```
 
-### 3.2 Deploy on VPS
+### 3.3 Open Firewall Ports
+
+```bash
+# If using ufw
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw reload
+
+# If using firewalld
+firewall-cmd --permanent --add-port=80/tcp
+firewall-cmd --permanent --add-port=443/tcp
+firewall-cmd --reload
+```
+
+### 3.4 Deploy on VPS (Production)
 
 ```bash
 # Pull latest code
-cd /root/vibemom  # or your project directory
+cd /root/vibemom
 git pull origin v2-editor
 
-# Rebuild and restart
-docker compose up -d --build api bot
+# Production deployment with nginx
+make up-prod
+
+# Or manually:
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build db bot api nginx
 
 # Check status
-docker compose ps
+make ps-prod
 
 # Check logs
-docker compose logs -f bot api
+make logs-prod
 ```
 
-## Step 4: Verification
+## Step 4: SSL Certificate Setup
 
-### 4.1 Check API Health
+### 4.1 Issue Certificate (First Time)
 
 ```bash
-# Health check (on VPS)
-curl http://localhost:8000/healthz
+# Using Makefile (recommended)
+make cert-issue DOMAIN=<API_DOMAIN> EMAIL=<EMAIL>
+
+# Or manually:
+# Start nginx for ACME challenge
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d nginx || true
+
+# Issue certificate
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm certbot certonly \
+  --webroot \
+  -w /var/www/certbot \
+  -d <API_DOMAIN> \
+  --email <EMAIL> \
+  --agree-tos \
+  --non-interactive
+
+# Restart nginx with SSL
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
+```
+
+### 4.2 Certificate Renewal
+
+```bash
+# Manual renewal
+make cert-renew
+
+# Add cron job for auto-renewal (1st of each month)
+crontab -e
+# Add: 0 0 1 * * cd /root/vibemom && make cert-renew
+```
+
+## Step 5: Verification
+
+### 5.1 Check API Health
+
+```bash
+# HTTPS health check (production)
+curl -sS https://<API_DOMAIN>/healthz
 # Expected: {"status":"ok","database":"ok"}
 
 # Version check (includes WEBAPP_URL and API_PUBLIC_URL)
-curl http://localhost:8000/version
+curl -sS https://<API_DOMAIN>/version
 # Expected: {"version":"1.0.0","git_sha":"...","webapp_url":"https://...","api_public_url":"https://..."}
+
+# Internal health check (from VPS)
+curl http://localhost:8000/healthz
 ```
 
-### 4.2 Check Bot /version Command
+### 5.2 Check Bot /version Command
 
 In Telegram chat with your bot:
 ```
@@ -149,13 +240,13 @@ WebApp URL: https://your-app.vercel.app
 API URL: https://api.yourdomain.com
 ```
 
-### 4.3 Check Mini App in Telegram
+### 5.3 Check Mini App in Telegram
 
 1. Open chat with your bot
 2. Tap the **📱 Кабинет** menu button (bottom left)
 3. Mini App should open and show project list
 
-### 4.4 Check Environment Variables in Container
+### 5.4 Check Environment Variables in Container
 
 ```bash
 docker compose exec api printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL)"
@@ -229,19 +320,43 @@ docker compose exec bot printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL)"
 2. Check firewall allows port 8000
 3. For production: set up Nginx/Caddy with SSL (see next section)
 
-## Next Steps: Production SSL
+## Step 6: Configure Nginx Domain
 
-For production, set up reverse proxy with SSL termination:
+Edit `infra/nginx/conf.d/api.conf` and replace `<API_DOMAIN>` with your domain:
 
-1. **Option A: Caddy** (automatic HTTPS)
-2. **Option B: Nginx + Let's Encrypt**
+```bash
+# On VPS
+cd /root/vibemom
+sed -i 's/<API_DOMAIN>/api.vibemom.com/g' infra/nginx/conf.d/api.conf
+```
 
-This is covered in a separate guide. The current setup works for:
-- Development and debugging
-- Browser testing (without Telegram WebApp features)
-- Verifying all components work together
+Or edit manually - replace all occurrences of `<API_DOMAIN>`.
+
+## Step 7: Full Production Stack
+
+```bash
+# On VPS
+cd /root/vibemom
+
+# Full production deployment
+make up-prod
+
+# Check all services running
+make ps-prod
+
+# Check logs
+make logs-prod
+```
 
 ## Environment Variables Reference
+
+### Placeholders
+
+| Placeholder | Example | Description |
+|-------------|---------|-------------|
+| `<API_DOMAIN>` | `api.example.com` | Your API subdomain (A record → VPS IP) |
+| `<WEBAPP_URL>` | `https://myapp.vercel.app` | Vercel deployment URL |
+| `<EMAIL>` | `admin@example.com` | Email for Let's Encrypt |
 
 ### Bot (`.env` on VPS)
 
@@ -258,7 +373,9 @@ This is covered in a separate guide. The current setup works for:
 | `BOT_TOKEN` | Telegram Bot Token (for initData validation) | Yes |
 | `WEBAPP_URL` | WebApp URL (auto-added to CORS) | Recommended |
 | `API_PUBLIC_URL` | Public API URL (for diagnostics) | Recommended |
-| `WEBAPP_ORIGINS` | Extra CORS origins (comma-separated) | Optional |
+| `ALLOWED_ORIGINS` | CORS origins (comma-separated, preferred) | Recommended |
+| `WEBAPP_ORIGINS` | Legacy CORS origins (comma-separated) | Optional |
+| `API_CORS_ORIGINS` | Legacy CORS config | Optional |
 | `API_JWT_SECRET` | JWT signing secret (min 32 chars) | Yes |
 | `TG_INIT_DATA_SKIP_VERIFY` | Skip initData validation (debug only!) | No (default: false) |
 
@@ -266,26 +383,71 @@ This is covered in a separate guide. The current setup works for:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `VITE_API_PUBLIC_URL` | Public API URL | Yes |
+| `VITE_API_PUBLIC_URL` | Public API URL (e.g., `https://<API_DOMAIN>`) | Yes |
 
 ## Quick Commands Reference
 
 ```bash
-# VPS: rebuild and restart
-docker compose up -d --build api bot
+# =============================================================================
+# Production (with nginx + SSL)
+# =============================================================================
 
-# VPS: check logs
-docker compose logs -f bot api
+# Start production stack
+make up-prod
 
-# VPS: check health
+# Check status
+make ps-prod
+
+# View logs
+make logs-prod        # All services
+make logs-nginx       # Nginx only (60 lines)
+make logs-api         # API only (80 lines)
+make logs-bot         # Bot only (80 lines)
+
+# =============================================================================
+# SSL Certificates
+# =============================================================================
+
+# Issue certificate (first time)
+make cert-issue DOMAIN=<API_DOMAIN> EMAIL=<EMAIL>
+
+# Renew certificates
+make cert-renew
+
+# Check certificate status
+make cert-status
+
+# =============================================================================
+# Health Checks
+# =============================================================================
+
+# HTTPS health check (production)
+curl -sS https://<API_DOMAIN>/healthz
+curl -sS https://<API_DOMAIN>/version
+
+# Internal health check (from VPS)
 curl http://localhost:8000/healthz
 
-# VPS: check version
-curl http://localhost:8000/version
+# Check env in container
+docker compose exec api printenv | grep -E "(WEBAPP|CORS|ALLOWED)"
 
-# VPS: check env in container
-docker compose exec api printenv | grep WEBAPP
+# =============================================================================
+# Nginx
+# =============================================================================
 
-# Local: run frontend
+# Test nginx config syntax
+make nginx-test
+
+# Reload nginx (without restart)
+make nginx-reload
+
+# =============================================================================
+# Development (local)
+# =============================================================================
+
+# Start dev stack (without nginx)
+make up
+
+# Run frontend locally
 cd services/webapp && npm run dev
 ```

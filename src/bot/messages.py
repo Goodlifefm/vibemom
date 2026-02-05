@@ -546,6 +546,11 @@ V2_MENU_CARD_TITLE = """🏠 Главное меню
 
 Выберите раздел:"""
 
+# Unified Cabinet Menu
+V2_CABINET_MENU_TITLE = """<b>📱 Кабинет</b>
+
+Выберите действие:"""
+
 V2_MENU_STEP_SCREEN = """📌 Текущий шаг
 
 {step_info}"""
@@ -789,6 +794,7 @@ COPY_IDS = [
     "V2_MOD_NEEDS_FIX_LABEL",
     "V2_MOD_REJECTED_LABEL",
     "V2_MENU_CARD_TITLE",
+    "V2_CABINET_MENU_TITLE",
     "V2_MENU_STEP_SCREEN",
     "V2_MENU_STEP_NO_ACTIVE",
     "V2_MENU_PROJECT_SCREEN",

@@ -184,6 +184,8 @@ DRAFT → SUBMITTED (pending) → NEEDS_FIX → повторная подача 
 
 Telegram Mini App — веб-интерфейс "Кабинет" для управления проектами.
 
+> **Важно**: Telegram Mini App требует HTTPS. Для production используется Nginx + Let's Encrypt.
+
 ### Быстрый старт
 
 1. **Задеплоить frontend** на Vercel:
@@ -193,46 +195,78 @@ Telegram Mini App — веб-интерфейс "Кабинет" для упра
    vercel --prod
    ```
 
-2. **Настроить BotFather**: 
+2. **Настроить DNS** (A-запись):
+   - `api.<DOMAIN>` → `<VPS_IP>` (например: `api.vibemom.com` → `89.191.226.233`)
+
+3. **Настроить Nginx и SSL на VPS**:
+   ```bash
+   cd /root/vibemom
+   
+   # Заменить <DOMAIN> в конфиге nginx
+   sed -i 's/<DOMAIN>/vibemom.com/g' infra/nginx/nginx.conf
+   
+   # Получить SSL-сертификат (первый раз)
+   docker compose up -d nginx
+   docker compose run --rm certbot certonly --webroot -w /var/www/certbot -d api.<DOMAIN> --email <EMAIL> --agree-tos --non-interactive
+   docker compose restart nginx
+   ```
+
+4. **Обновить .env на VPS**:
+   ```env
+   WEBAPP_URL=https://your-app.vercel.app
+   API_PUBLIC_URL=https://api.<DOMAIN>
+   API_CORS_ORIGINS=https://web.telegram.org,https://t.me
+   ```
+
+5. **Настроить Vercel Environment Variables**:
+   - `VITE_API_PUBLIC_URL=https://api.<DOMAIN>`
+
+6. **Пересобрать контейнеры**:
+   ```bash
+   docker compose up -d --build db bot api nginx
+   ```
+
+7. **Настроить BotFather**: 
    - `/mybots` → выбрать бота → Bot Settings → Menu Button → Configure
    - Указать URL Mini App: `https://your-app.vercel.app`
 
-3. **Обновить .env на VPS**:
-   ```env
-   WEBAPP_URL=https://your-app.vercel.app
-   API_PUBLIC_URL=https://api.yourdomain.com
-   WEBAPP_ORIGINS=https://web.telegram.org
-   ```
+### Production URLs
 
-4. **Настроить Vercel Environment Variables**:
-   - `VITE_API_PUBLIC_URL=https://api.yourdomain.com`
+Placeholders for production deployment:
 
-5. **Пересобрать контейнеры**:
-   ```bash
-   docker compose up -d --build bot api
-   ```
+| Placeholder | Example | Description |
+|-------------|---------|-------------|
+| `<API_DOMAIN>` | `api.example.com` | Your API subdomain (A record → VPS IP) |
+| `<WEBAPP_URL>` | `https://myapp.vercel.app` | Vercel deployment URL |
+| `<EMAIL>` | `admin@example.com` | Email for Let's Encrypt |
+
+After deployment, your URLs will be:
+- **API**: `https://<API_DOMAIN>` (e.g., `https://api.vibemom.com`)
+- **WebApp**: `<WEBAPP_URL>` (e.g., `https://vibemom.vercel.app`)
 
 ### Mini App Quick Check
 
 Быстрая проверка что всё работает:
 
 ```bash
-# 1. На VPS: пересобрать и запустить
-docker compose up -d --build api bot
+# 1. На VPS: пересобрать и запустить (production)
+make up-prod
 
-# 2. Проверить health
-curl http://localhost:8000/healthz
-# Ожидается: {"status":"ok","database":"ok"}
+# Или вручную:
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build db api bot nginx
 
-# 3. Проверить version (должны быть WEBAPP_URL и API_PUBLIC_URL)
-curl http://localhost:8000/version
+# 2. Проверить health (HTTPS)
+curl -I https://<API_DOMAIN>/healthz
+# Ожидается: HTTP/2 200
+
+# 3. Проверить version
+curl https://<API_DOMAIN>/version
 
 # 4. Проверить env внутри контейнера
-docker compose exec bot printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL)"
-docker compose exec api printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL)"
+docker compose exec api printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL|ALLOWED_ORIGINS)"
 
 # 5. Смотреть логи
-docker compose logs -f bot api
+make logs-prod
 ```
 
 В Telegram:
@@ -248,8 +282,9 @@ docker compose logs -f bot api
 | Переменная | Описание | Где |
 |------------|----------|-----|
 | `WEBAPP_URL` | HTTPS URL frontend (Vercel) | `.env` на VPS (bot + api) |
-| `API_PUBLIC_URL` | Public API URL | `.env` на VPS + Vercel env как `VITE_API_PUBLIC_URL` |
-| `WEBAPP_ORIGINS` | Доп. CORS origins | `.env` на VPS (api) |
+| `API_PUBLIC_URL` | Public API URL (HTTPS) | `.env` на VPS + Vercel env как `VITE_API_PUBLIC_URL` |
+| `ALLOWED_ORIGINS` | CORS origins (рекомендуется) | `.env` на VPS (api) |
+| `API_CORS_ORIGINS` | Legacy CORS origins | `.env` на VPS (api) |
 | `TG_INIT_DATA_SKIP_VERIFY` | Пропуск проверки подписи (только dev!) | `.env` на VPS (api) |
 
 ## Deployment

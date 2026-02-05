@@ -4,7 +4,7 @@
 """
 import logging
 import uuid
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from src.v2.ui.callbacks import (
     V2_FORM_PREFIX,
@@ -13,7 +13,6 @@ from src.v2.ui.callbacks import (
     V2_MOD_PREFIX,
     V2_FIX_PREFIX,
     V2_CABINET_PREFIX,
-    MENU_CREATE,
     build_callback,
 )
 from src.v2.ui.copy import V2Copy
@@ -140,63 +139,19 @@ def kb_cabinet(
     has_projects: bool = False,
 ) -> InlineKeyboardMarkup:
     """
-    Клавиатура кабинета (меню).
+    Unified cabinet keyboard (use kb_cabinet_menu from src/v2/keyboards/menu.py for new code).
     
-    Кнопки (по порядку):
-    - "📱 Кабинет (Mini App)" (WebApp кнопка, если WEBAPP_URL задан)
-    - "▶️ Продолжить" (если show_resume)
-    - "📌 Текущий шаг" | "🗂 Проект" (в одной строке)
-    - "🧭 Начать заново"
-    - "📄 Мои проекты"
-    - "➕ Создать проект"
-    - "❓ Помощь"
-    
-    Callback data: {PREFIX}:resume, {PREFIX}:current_step, и т.д.
+    Cabinet menu items:
+    - 🏠 Главное меню (m:home)
+    - ▶️ Продолжить заполнение (m:resume) — only if show_resume
+    - 📁 Мои проекты (m:my_projects)
+    - 🏪 Каталог | 📥 Реквесты (m:catalog, m:request)
+    - 📊 Мои реквесты / Лиды (m:my_requests_leads)
+    - 📱 Кабинет (Mini App) — WebApp button
+    - ✕ Закрыть (m:close)
     """
-    rows = []
-    
-    # WebApp button (Mini App) - only if WEBAPP_URL is configured
-    webapp_url = _get_webapp_url()
-    if webapp_url:
-        rows.append([InlineKeyboardButton(
-            text="📱 Кабинет (Mini App)",
-            web_app=WebAppInfo(url=webapp_url),
-        )])
-    
-    if show_resume:
-        rows.append([InlineKeyboardButton(
-            text=V2Copy.get(V2Copy.MENU_CONTINUE).strip(),
-            callback_data=build_callback(V2_MENU_PREFIX, "resume"),
-        )])
-    rows.extend([
-        [
-            InlineKeyboardButton(
-                text=V2Copy.get(V2Copy.MENU_CURRENT_STEP).strip(),
-                callback_data=build_callback(V2_MENU_PREFIX, "current_step"),
-            ),
-            InlineKeyboardButton(
-                text=V2Copy.get(V2Copy.MENU_PROJECT).strip(),
-                callback_data=build_callback(V2_MENU_PREFIX, "project"),
-            ),
-        ],
-        [InlineKeyboardButton(
-            text=V2Copy.get(V2Copy.MENU_RESTART).strip(),
-            callback_data=build_callback(V2_MENU_PREFIX, "restart"),
-        )],
-        [InlineKeyboardButton(
-            text=V2Copy.get(V2Copy.MENU_MY_PROJECTS).strip(),
-            callback_data=build_callback(V2_MENU_PREFIX, "projects"),
-        )],
-        [InlineKeyboardButton(
-            text=V2Copy.get(V2Copy.MENU_CREATE).strip(),
-            callback_data=build_callback(V2_MENU_PREFIX, MENU_CREATE),
-        )],
-        [InlineKeyboardButton(
-            text=V2Copy.get(V2Copy.MENU_HELP).strip(),
-            callback_data=build_callback(V2_MENU_PREFIX, "help"),
-        )],
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    from src.v2.keyboards.menu import kb_cabinet_menu
+    return kb_cabinet_menu(has_active_draft=show_resume)
 
 
 def kb_restart_confirm() -> InlineKeyboardMarkup:
@@ -330,7 +285,9 @@ def projects_list_kb(projects: list[tuple[str, uuid.UUID | str]]) -> InlineKeybo
 
 
 def cabinet_inline_kb(*, show_resume: bool) -> InlineKeyboardMarkup:
-    return kb_cabinet(show_resume=show_resume, has_projects=False)
+    """Wrapper for backward compatibility."""
+    from src.v2.keyboards.menu import kb_cabinet_menu
+    return kb_cabinet_menu(has_active_draft=show_resume)
 
 
 def form_step_kb(step_key: str) -> InlineKeyboardMarkup:

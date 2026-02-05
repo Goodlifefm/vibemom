@@ -11,12 +11,17 @@ from src.bot.database.session import init_db
 from src.bot.handlers import setup_routers
 
 # Structured logging: timestamp, level, logger, message (one line per event)
+def _get_log_level() -> int:
+    """Get log level from LOG_LEVEL env var, default to INFO."""
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    return getattr(logging, level_name, logging.INFO)
+
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(
     logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 )
 _root = logging.getLogger()
-_root.setLevel(logging.INFO)
+_root.setLevel(_get_log_level())
 _root.addHandler(_handler)
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,15 @@ async def _setup_webapp_menu_button(bot: Bot, settings: Settings) -> None:
 async def main() -> None:
     settings = Settings()
     settings.validate_for_runtime()  # Validates BOT_TOKEN in non-CI environments
+    
+    # Reconfigure log level from Settings (pydantic-settings loads .env file)
+    # This is needed because module-level logging setup only sees shell env vars,
+    # not values from .env file which pydantic-settings loads later.
+    configured_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    if _root.level != configured_level:
+        _root.setLevel(configured_level)
+        logger.debug(f"Log level reconfigured to {settings.log_level.upper()}")
+    
     # Гарантированно инициализируем БД до регистрации хендлеров и polling
     init_db(settings)
     logger.info(_boot_version_line())

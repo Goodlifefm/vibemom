@@ -28,8 +28,11 @@ class Settings(BaseSettings):
     api_jwt_secret: str = "change-me-in-production"
     api_jwt_ttl_min: int = 43200  # 30 days in minutes
 
-    # CORS
-    webapp_origins: str = ""  # Comma-separated list of allowed origins
+    # CORS configuration (comma-separated list of allowed origins)
+    # Priority: allowed_origins > api_cors_origins > webapp_origins
+    allowed_origins: str = ""  # Preferred: comma-separated allowed origins
+    webapp_origins: str = ""  # Legacy: comma-separated list of allowed origins
+    api_cors_origins: str = ""  # Legacy: alternative CORS config
 
     # Mini App URLs (for CORS and diagnostics)
     webapp_url: str = ""  # e.g., https://myapp.vercel.app
@@ -63,15 +66,16 @@ class Settings(BaseSettings):
         Get list of allowed CORS origins.
         
         Auto-includes:
-        - Origins from WEBAPP_ORIGINS (comma-separated)
+        - Origins from ALLOWED_ORIGINS, API_CORS_ORIGINS or WEBAPP_ORIGINS (comma-separated)
         - WEBAPP_URL (normalized to scheme+host)
         - Dev origins: http://localhost:5173, http://127.0.0.1:5173
         """
         origins: set[str] = set()
         
-        # Add explicit WEBAPP_ORIGINS
-        if self.webapp_origins:
-            for origin in self.webapp_origins.split(","):
+        # Add explicit origins (priority: allowed_origins > api_cors_origins > webapp_origins)
+        cors_config = self.allowed_origins or self.api_cors_origins or self.webapp_origins
+        if cors_config:
+            for origin in cors_config.split(","):
                 origin = origin.strip()
                 if origin:
                     origins.add(origin)

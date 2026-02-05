@@ -7,7 +7,10 @@ Main Menu Card UX:
 - All interactions edit the same message (no new messages)
 - "✕ Закрыть" deletes or edits to "Меню закрыто"
 """
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import logging
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+logger = logging.getLogger(__name__)
 
 # Callback prefix for menu
 CB_PREFIX = "m"
@@ -21,33 +24,78 @@ def _cb(*parts: str) -> str:
     return ":".join([CB_PREFIX] + list(parts))
 
 
+def _get_webapp_url() -> str | None:
+    """Get WEBAPP_URL from settings, return None if not configured."""
+    try:
+        from src.bot.config import Settings
+        settings = Settings()
+        url = settings.webapp_url.strip()
+        if url and url.startswith("https://"):
+            return url
+        return None
+    except Exception:
+        return None
+
+
 # =============================================================================
-# Main Menu Keyboard (root screen)
+# Main Cabinet Menu Keyboard (unified entrypoint)
 # =============================================================================
+
+def kb_cabinet_menu(*, has_active_draft: bool = False) -> InlineKeyboardMarkup:
+    """
+    Unified cabinet menu keyboard (the ONE menu).
+    
+    Layout (exactly as specified):
+    - 🏠 Главное меню (m:home)
+    - ▶️ Продолжить заполнение (m:resume) — only if has_active_draft
+    - 📁 Мои проекты (m:my_projects)
+    - 🏪 Каталог (m:catalog)
+    - 📥 Реквесты (m:request)
+    - 📊 Мои реквесты / Лиды (m:my_requests_leads)
+    - 📱 Кабинет (Mini App) — WebApp button if configured
+    - ✕ Закрыть (m:close)
+    """
+    rows = []
+    
+    # 🏠 Главное меню
+    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data=_cb("home"))])
+    
+    # ▶️ Продолжить заполнение (only if draft exists)
+    if has_active_draft:
+        rows.append([InlineKeyboardButton(text="▶️ Продолжить заполнение", callback_data=_cb("resume"))])
+    
+    # 📁 Мои проекты
+    rows.append([InlineKeyboardButton(text="📁 Мои проекты", callback_data=_cb("my_projects"))])
+    
+    # 🏪 Каталог | 📥 Реквесты (one row)
+    rows.append([
+        InlineKeyboardButton(text="🏪 Каталог", callback_data=_cb("catalog")),
+        InlineKeyboardButton(text="📥 Реквесты", callback_data=_cb("request")),
+    ])
+    
+    # 📊 Мои реквесты / Лиды
+    rows.append([InlineKeyboardButton(text="📊 Мои реквесты / Лиды", callback_data=_cb("my_requests_leads"))])
+    
+    # 📱 Кабинет (Mini App) — WebApp button
+    webapp_url = _get_webapp_url()
+    if webapp_url:
+        rows.append([InlineKeyboardButton(
+            text="📱 Кабинет (Mini App)",
+            web_app=WebAppInfo(url=webapp_url),
+        )])
+    
+    # ✕ Закрыть
+    rows.append([InlineKeyboardButton(text="✕ Закрыть", callback_data=_cb("close"))])
+    
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 def kb_main_menu() -> InlineKeyboardMarkup:
     """
-    Main menu card keyboard.
-    
-    Layout:
-    - 📌 Текущий шаг (m:step)
-    - 📁 Проект (m:project)
-    - 🧭 Начать заново (m:restart)
-    - 📄 Мои проекты (m:my_projects)
-    - ➕ Создать проект (m:create_project)
-    - ❓ Помощь/Команды (m:help)
-    - ✕ Закрыть (m:close)
+    Legacy main menu card keyboard. Use kb_cabinet_menu() for unified menu.
+    Kept for backward compatibility.
     """
-    rows = [
-        [InlineKeyboardButton(text="📌 Текущий шаг", callback_data=_cb("step"))],
-        [InlineKeyboardButton(text="📁 Проект", callback_data=_cb("project"))],
-        [InlineKeyboardButton(text="🧭 Начать заново", callback_data=_cb("restart"))],
-        [InlineKeyboardButton(text="📄 Мои проекты", callback_data=_cb("my_projects"))],
-        [InlineKeyboardButton(text="➕ Создать проект", callback_data=_cb("create_project"))],
-        [InlineKeyboardButton(text="❓ Помощь/Команды", callback_data=_cb("help"))],
-        [InlineKeyboardButton(text="✕ Закрыть", callback_data=_cb("close"))],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return kb_cabinet_menu(has_active_draft=False)
 
 
 # =============================================================================

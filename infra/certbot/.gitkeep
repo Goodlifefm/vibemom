@@ -1,0 +1,3 @@
+# This directory will contain Let's Encrypt certificates.
+# Subdirectories (conf/, www/) are gitignored as they contain sensitive data.
+# They are created automatically when you run certbot.

@@ -56,7 +56,9 @@ services:
       BOT_TOKEN: ${BOT_TOKEN:-}
       API_JWT_SECRET: ${API_JWT_SECRET:-change-me-in-production}
       API_JWT_TTL_MIN: ${API_JWT_TTL_MIN:-43200}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       WEBAPP_ORIGINS: ${WEBAPP_ORIGINS:-}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-}
       ADMIN_IDS: ${ADMIN_IDS:-}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -76,7 +78,9 @@ services:
       retries: 3
       start_period: 10s
 
+  # =============================================================================
   # Mini App Frontend (optional - for local development)
+  # =============================================================================
   # Production deployment should use Vercel/Cloudflare Pages
   webapp:
     build:

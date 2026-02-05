@@ -33,64 +33,36 @@ def persistent_reply_kb() -> ReplyKeyboardMarkup:
 
 def reply_menu_keyboard_full() -> ReplyKeyboardMarkup:
     """
-    Full reply keyboard menu (bottom-sheet style).
+    Full reply keyboard menu (bottom-sheet style) - matches cabinet menu.
     
     Layout:
-    Row1: 📌 Текущий шаг | 📁 Проект
-    Row2: ♻️ Начать заново (full width)
-    Row3: 📄 Мои проекты (full width)
-    Row4: ➕ Создать проект (full width)
-    Row5: ❓ Помощь / Команды (full width)
-    Row6: 🏠 Меню (full width) — always returns to menu
+    Row1: 📁 Мои проекты | 🏪 Каталог
+    Row2: 📥 Реквесты | 📊 Мои реквесты / Лиды
+    Row3: 🏠 Меню (full width)
     """
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_CURRENT_STEP").strip()),
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_PROJECT").strip()),
-            ],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_RESTART").strip())],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_MY_PROJECTS").strip())],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_CREATE").strip())],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_HELP").strip())],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-    )
+    return reply_menu_keyboard_with_actions()
 
 
 def reply_menu_keyboard_with_actions() -> ReplyKeyboardMarkup:
     """
-    Extended reply keyboard with Каталог, Реквест, Мои реквесты, Лиды buttons.
-    Used when user needs quick access to these actions.
+    Simplified reply keyboard matching the cabinet menu.
     
     Layout:
-    Row1: 📌 Текущий шаг | 📁 Проект  
-    Row2: ♻️ Начать заново (full width)
-    Row3: 📄 Мои проекты (full width)
-    Row4: ➕ Создать проект (full width)
-    Row5: 📚 Каталог | ✍️ Реквест
-    Row6: 🧾 Мои реквесты | 👥 Лиды
-    Row7: ❓ Помощь / Команды (full width)
+    Row1: 📁 Мои проекты | 🏪 Каталог
+    Row2: 📥 Реквесты | 📊 Мои реквесты / Лиды
+    Row3: 🏠 Меню (full width)
     """
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_CURRENT_STEP").strip()),
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_PROJECT").strip()),
-            ],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_RESTART").strip())],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_MY_PROJECTS").strip())],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_CREATE").strip())],
-            [
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_CATALOG").strip()),
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_REQUEST").strip()),
+                KeyboardButton(text="📁 Мои проекты"),
+                KeyboardButton(text="🏪 Каталог"),
             ],
             [
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_MY_REQUESTS").strip()),
-                KeyboardButton(text=get_copy("V2_REPLY_BTN_LEADS").strip()),
+                KeyboardButton(text="📥 Реквесты"),
+                KeyboardButton(text="📊 Мои реквесты / Лиды"),
             ],
-            [KeyboardButton(text=get_copy("V2_REPLY_BTN_HELP").strip())],
+            [KeyboardButton(text="🏠 Меню")],
         ],
         resize_keyboard=True,
         one_time_keyboard=False,
@@ -109,21 +81,9 @@ def menu_cabinet_inline_kb(
     show_resume: bool = False,
     has_projects: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Inline keyboard for menu/cabinet: Continue, Current step, Project, Start over, My projects, Create, Help."""
-    rows = []
-    if show_resume:
-        rows.append([InlineKeyboardButton(text=get_copy("V2_MENU_CONTINUE").strip(), callback_data=f"{MENU_PREFIX}:resume")])
-    rows.extend([
-        [
-            InlineKeyboardButton(text=get_copy("V2_MENU_CURRENT_STEP").strip(), callback_data=f"{MENU_PREFIX}:current_step"),
-            InlineKeyboardButton(text=get_copy("V2_MENU_PROJECT").strip(), callback_data=f"{MENU_PREFIX}:project"),
-        ],
-        [InlineKeyboardButton(text=get_copy("V2_MENU_RESTART").strip(), callback_data=f"{MENU_PREFIX}:restart")],
-        [InlineKeyboardButton(text=get_copy("V2_MENU_MY_PROJECTS").strip(), callback_data=f"{MENU_PREFIX}:projects")],
-        [InlineKeyboardButton(text=get_copy("V2_MENU_CREATE").strip(), callback_data=f"{MENU_PREFIX}:create")],
-        [InlineKeyboardButton(text=get_copy("V2_MENU_HELP").strip(), callback_data=f"{MENU_PREFIX}:help")],
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    """Inline keyboard for menu/cabinet - uses unified cabinet menu."""
+    from src.v2.keyboards.menu import kb_cabinet_menu
+    return kb_cabinet_menu(has_active_draft=show_resume)
 
 
 def menu_restart_confirm_kb() -> InlineKeyboardMarkup:
@@ -239,73 +199,12 @@ def cabinet_menu_inline_kb(
     has_publications: bool = False,
 ) -> InlineKeyboardMarkup:
     """
-    Main cabinet menu inline keyboard.
-    Shown when user presses "☰ Меню" button.
+    Main cabinet menu inline keyboard - uses unified cabinet menu.
     
-    Structure:
-    - 🧩 Продолжить заполнение (if has_active_wizard)
-    - 👁 Предпросмотр
-    - 🗂 Черновики
-    - 📌 Публикации
-    - ⚙️ Настройки
-    - ❓ Помощь
-    - ↩️ Вернуться (same as continue wizard)
-    
-    Callback namespace: menu:*
+    Callback namespace: m:*
     """
-    rows = []
-    
-    # Continue wizard (only if there's an active wizard)
-    if has_active_wizard:
-        rows.append([InlineKeyboardButton(
-            text=get_copy("V2_MENU_CONTINUE_WIZARD").strip(),
-            callback_data=f"{CB_MENU}:continue",
-        )])
-    
-    # Preview (only if has active wizard with data)
-    if has_active_wizard:
-        rows.append([InlineKeyboardButton(
-            text=get_copy("V2_MENU_PREVIEW").strip(),
-            callback_data=f"{CB_MENU}:preview",
-        )])
-    
-    # Drafts and Publications
-    rows.append([
-        InlineKeyboardButton(
-            text=get_copy("V2_MENU_DRAFTS").strip(),
-            callback_data=f"{CB_MENU}:drafts",
-        ),
-        InlineKeyboardButton(
-            text=get_copy("V2_MENU_PUBLICATIONS").strip(),
-            callback_data=f"{CB_MENU}:posts",
-        ),
-    ])
-    
-    # Settings and Help
-    rows.append([
-        InlineKeyboardButton(
-            text=get_copy("V2_MENU_SETTINGS").strip(),
-            callback_data=f"{CB_MENU}:settings",
-        ),
-        InlineKeyboardButton(
-            text=get_copy("V2_MENU_HELP_BTN").strip(),
-            callback_data=f"{CB_MENU}:help",
-        ),
-    ])
-    
-    # Back / Return (same as continue if wizard exists, else create new)
-    if has_active_wizard:
-        rows.append([InlineKeyboardButton(
-            text=get_copy("V2_MENU_BACK").strip(),
-            callback_data=f"{CB_MENU}:continue",
-        )])
-    else:
-        rows.append([InlineKeyboardButton(
-            text=get_copy("V2_MENU_CREATE").strip(),
-            callback_data=f"{CB_MENU}:create",
-        )])
-    
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    from src.v2.keyboards.menu import kb_cabinet_menu
+    return kb_cabinet_menu(has_active_draft=has_active_wizard)
 
 
 def menu_back_kb() -> InlineKeyboardMarkup:
