@@ -2,8 +2,9 @@
 Единые билдеры клавиатур для V2.
 Все кнопки используют copy из messages.py через V2Copy.
 """
+import logging
 import uuid
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from src.v2.ui.callbacks import (
     V2_FORM_PREFIX,
@@ -16,6 +17,24 @@ from src.v2.ui.callbacks import (
     build_callback,
 )
 from src.v2.ui.copy import V2Copy
+
+logger = logging.getLogger(__name__)
+
+
+def _get_webapp_url() -> str | None:
+    """Get WEBAPP_URL from settings, return None if not configured."""
+    try:
+        from src.bot.config import Settings
+        settings = Settings()
+        url = settings.webapp_url.strip()
+        if url and url.startswith("https://"):
+            return url
+        if url:
+            logger.warning("WEBAPP_URL must start with https://, got: %s", url[:50])
+        return None
+    except Exception as e:
+        logger.warning("Failed to get WEBAPP_URL: %s", e)
+        return None
 
 
 def kb_step(
@@ -124,6 +143,7 @@ def kb_cabinet(
     Клавиатура кабинета (меню).
     
     Кнопки (по порядку):
+    - "📱 Кабинет (Mini App)" (WebApp кнопка, если WEBAPP_URL задан)
     - "▶️ Продолжить" (если show_resume)
     - "📌 Текущий шаг" | "🗂 Проект" (в одной строке)
     - "🧭 Начать заново"
@@ -134,6 +154,15 @@ def kb_cabinet(
     Callback data: {PREFIX}:resume, {PREFIX}:current_step, и т.д.
     """
     rows = []
+    
+    # WebApp button (Mini App) - only if WEBAPP_URL is configured
+    webapp_url = _get_webapp_url()
+    if webapp_url:
+        rows.append([InlineKeyboardButton(
+            text="📱 Кабинет (Mini App)",
+            web_app=WebAppInfo(url=webapp_url),
+        )])
+    
     if show_resume:
         rows.append([InlineKeyboardButton(
             text=V2Copy.get(V2Copy.MENU_CONTINUE).strip(),

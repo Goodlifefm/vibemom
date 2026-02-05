@@ -31,6 +31,7 @@ services:
       V2_CANARY_MODE: ${V2_CANARY_MODE:-false}
       V2_ALLOWLIST: ${V2_ALLOWLIST:-}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      WEBAPP_URL: ${WEBAPP_URL:-}
       # Version tracking for deployment verification
       GIT_SHA: ${GIT_SHA:-unknown}
       GIT_BRANCH: ${GIT_BRANCH:-unknown}
@@ -60,6 +61,7 @@ services:
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       APP_ENV: ${APP_ENV:-local}
+      TG_INIT_DATA_SKIP_VERIFY: ${TG_INIT_DATA_SKIP_VERIFY:-false}
       GIT_SHA: ${GIT_SHA:-unknown}
       GIT_BRANCH: ${GIT_BRANCH:-unknown}
       BUILD_TIME: ${BUILD_TIME:-unknown}
@@ -73,3 +75,20 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # Mini App Frontend (optional - for local development)
+  # Production deployment should use Vercel/Cloudflare Pages
+  webapp:
+    build:
+      context: services/webapp
+      args:
+        VITE_API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+    ports:
+      - "3000:80"
+    profiles:
+      - webapp  # Only runs with: docker compose --profile webapp up
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

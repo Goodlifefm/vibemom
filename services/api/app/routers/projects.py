@@ -3,6 +3,7 @@ Projects endpoints.
 
 Endpoints:
 - GET /projects/my - Get current user's projects
+- POST /projects/create_draft - Create new draft project
 - GET /projects/{id} - Get project details
 - POST /projects/{id}/preview - Generate preview
 """
@@ -55,6 +56,45 @@ async def get_my_projects(
     )
 
     return projects
+
+
+@router.post(
+    "/create_draft",
+    response_model=ProjectDetailsDTO,
+    summary="Create draft project",
+    description="Create a new draft project for the current user.",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_draft_project(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectDetailsDTO:
+    """
+    Create a new draft project for the current user.
+
+    Returns ProjectDetailsDTO with the new project details.
+    """
+    service = ProjectsService(session)
+
+    # Ensure user exists in DB
+    user = await service.get_or_create_user(
+        telegram_id=current_user.telegram_id,
+        username=current_user.username,
+        full_name=current_user.full_name,
+    )
+
+    # Create draft submission
+    project = await service.create_draft(user.id)
+
+    logger.info(
+        f"Created draft project",
+        extra={
+            "project_id": project.id,
+            "telegram_id": current_user.telegram_id,
+        }
+    )
+
+    return project
 
 
 @router.get(

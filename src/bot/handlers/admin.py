@@ -33,6 +33,8 @@ def get_version_info() -> dict[str, str]:
         "build_time": os.getenv("BUILD_TIME", "unknown"),
         "environment": os.getenv("APP_ENV", "unknown"),
         "v2_enabled": os.getenv("V2_ENABLED", "false"),
+        "webapp_url": os.getenv("WEBAPP_URL", "(not set)"),
+        "api_public_url": os.getenv("API_PUBLIC_URL", "(not set)"),
     }
 
 
@@ -46,7 +48,9 @@ async def cmd_version(message: Message) -> None:
         f"<b>Branch:</b> {info['git_branch']}\n"
         f"<b>Build:</b> {info['build_time']}\n"
         f"<b>Env:</b> {info['environment']}\n"
-        f"<b>V2:</b> {info['v2_enabled']}"
+        f"<b>V2:</b> {info['v2_enabled']}\n\n"
+        f"<b>WebApp URL:</b> {info['webapp_url']}\n"
+        f"<b>API URL:</b> {info['api_public_url']}"
     )
     await message.answer(text, parse_mode="HTML")
 

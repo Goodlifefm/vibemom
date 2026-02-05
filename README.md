@@ -180,6 +180,78 @@ DRAFT → SUBMITTED (pending) → NEEDS_FIX → повторная подача 
 - Если `V2_ENABLED=true` и `V2_CANARY_MODE=false` — все идут в V2.
 - Если `V2_ENABLED=true` и `V2_CANARY_MODE=true` — V2 только для `ADMIN_IDS` или для tg_id из `V2_ALLOWLIST`; остальные остаются на V1.
 
+## Mini App (Telegram WebApp)
+
+Telegram Mini App — веб-интерфейс "Кабинет" для управления проектами.
+
+### Быстрый старт
+
+1. **Задеплоить frontend** на Vercel:
+   ```bash
+   cd services/webapp
+   npm install
+   vercel --prod
+   ```
+
+2. **Настроить BotFather**: 
+   - `/mybots` → выбрать бота → Bot Settings → Menu Button → Configure
+   - Указать URL Mini App: `https://your-app.vercel.app`
+
+3. **Обновить .env на VPS**:
+   ```env
+   WEBAPP_URL=https://your-app.vercel.app
+   API_PUBLIC_URL=https://api.yourdomain.com
+   WEBAPP_ORIGINS=https://web.telegram.org
+   ```
+
+4. **Настроить Vercel Environment Variables**:
+   - `VITE_API_PUBLIC_URL=https://api.yourdomain.com`
+
+5. **Пересобрать контейнеры**:
+   ```bash
+   docker compose up -d --build bot api
+   ```
+
+### Mini App Quick Check
+
+Быстрая проверка что всё работает:
+
+```bash
+# 1. На VPS: пересобрать и запустить
+docker compose up -d --build api bot
+
+# 2. Проверить health
+curl http://localhost:8000/healthz
+# Ожидается: {"status":"ok","database":"ok"}
+
+# 3. Проверить version (должны быть WEBAPP_URL и API_PUBLIC_URL)
+curl http://localhost:8000/version
+
+# 4. Проверить env внутри контейнера
+docker compose exec bot printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL)"
+docker compose exec api printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL)"
+
+# 5. Смотреть логи
+docker compose logs -f bot api
+```
+
+В Telegram:
+- `/version` — должен показать WEBAPP_URL и API_PUBLIC_URL
+- Нажать кнопку **📱 Кабинет** — должен открыться Mini App со списком проектов
+
+### Подробная документация
+
+- [Mini App Deployment Guide](docs/MINIAPP_DEPLOY.md) — полное руководство по деплою
+
+### Переменные окружения Mini App
+
+| Переменная | Описание | Где |
+|------------|----------|-----|
+| `WEBAPP_URL` | HTTPS URL frontend (Vercel) | `.env` на VPS (bot + api) |
+| `API_PUBLIC_URL` | Public API URL | `.env` на VPS + Vercel env как `VITE_API_PUBLIC_URL` |
+| `WEBAPP_ORIGINS` | Доп. CORS origins | `.env` на VPS (api) |
+| `TG_INIT_DATA_SKIP_VERIFY` | Пропуск проверки подписи (только dev!) | `.env` на VPS (api) |
+
 ## Deployment
 
 Автодеплой на VPS при пуше в `main` или `master`: GitHub Actions по SSH заходит на сервер, обновляет код в `/root/vibemom`, пересобирает и перезапускает контейнеры (`docker compose up -d --build`).
@@ -233,6 +305,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 ## 📐 Документация
 
+- [Mini App Deployment Guide](docs/MINIAPP_DEPLOY.md) — руководство по деплою Mini App на Vercel + VPS
 - [Mini App "Кабинет" — архитектура](docs/MINIAPP_CABINET_ARCHITECTURE.md) — план по выносу кабинетного UX в Telegram Mini App
 - [Mini App API Specification](docs/MINIAPP_API_SPEC.md) — REST API для Mini App (auth, projects, endpoints, curl examples)
 - [Mini App Data Contract](docs/MINIAPP_DATA_CONTRACT.md) — DTO-модели (с derived fields), V2 answers registry, legacy mapping, identity rules

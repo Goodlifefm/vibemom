@@ -76,13 +76,13 @@ if cors_origins:
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "X-TG-INIT-DATA", "Authorization"],
         expose_headers=["X-API-Version"],
     )
     logger.info(f"CORS enabled for origins: {cors_origins}")
 else:
-    logger.warning("CORS not configured - WEBAPP_ORIGINS is empty")
+    logger.warning("CORS not configured - WEBAPP_ORIGINS and WEBAPP_URL are empty")
 
 
 # =============================================================================
@@ -114,6 +114,34 @@ async def add_api_version_header(request: Request, call_next):
     """Add API version header to all responses."""
     response = await call_next(request)
     response.headers["X-API-Version"] = "v1"
+    return response
+
+
+@app.middleware("http")
+async def cors_diagnostic_logging(request: Request, call_next):
+    """Log CORS diagnostic info for debugging cross-origin requests."""
+    origin = request.headers.get("origin", "-")
+    path = request.url.path
+    method = request.method
+    
+    # Extract user_id from Authorization header if present (for diagnostics only)
+    user_id = "-"
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            import jwt
+            token = auth_header[7:]
+            # Decode without verification just to extract user_id for logging
+            payload = jwt.decode(token, options={"verify_signature": False})
+            user_id = str(payload.get("sub", "-"))
+        except Exception:
+            pass
+    
+    # Log for non-health endpoints to avoid noise
+    if path not in ["/healthz", "/", "/docs", "/openapi.json"]:
+        logger.debug(f"CORS: origin={origin} method={method} path={path} user_id={user_id}")
+    
+    response = await call_next(request)
     return response
 
 

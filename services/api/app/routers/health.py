@@ -50,7 +50,7 @@ async def version() -> VersionResponse:
     """
     Version information endpoint.
 
-    Returns version, git SHA, branch, and build time.
+    Returns version, git SHA, branch, build time, and Mini App URLs.
     """
     settings = get_settings()
 
@@ -60,4 +60,6 @@ async def version() -> VersionResponse:
         git_branch=settings.git_branch,
         build_time=settings.build_time,
         env=settings.app_env,
+        webapp_url=settings.webapp_url or "(not set)",
+        api_public_url=settings.api_public_url or "(not set)",
     )

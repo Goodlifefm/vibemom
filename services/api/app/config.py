@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # CORS
     webapp_origins: str = ""  # Comma-separated list of allowed origins
 
+    # Mini App URLs (for CORS and diagnostics)
+    webapp_url: str = ""  # e.g., https://myapp.vercel.app
+    api_public_url: str = ""  # e.g., https://api.mydomain.com
+
     # Admin IDs
     admin_ids: str = ""
     admin_telegram_ids: str = ""  # Legacy fallback
@@ -38,6 +42,9 @@ class Settings(BaseSettings):
     # Application info
     app_env: str = "local"
     log_level: str = "INFO"
+
+    # Telegram initData validation
+    tg_init_data_skip_verify: bool = False  # MVP: skip HMAC validation (WARNING: insecure)
 
     # Version info (set by CI/CD)
     git_sha: str = "unknown"
@@ -52,10 +59,38 @@ class Settings(BaseSettings):
         return {int(x.strip()) for x in raw.split(",") if x.strip()}
 
     def get_cors_origins(self) -> list[str]:
-        """Get list of allowed CORS origins."""
-        if not self.webapp_origins:
-            return []
-        return [origin.strip() for origin in self.webapp_origins.split(",") if origin.strip()]
+        """
+        Get list of allowed CORS origins.
+        
+        Auto-includes:
+        - Origins from WEBAPP_ORIGINS (comma-separated)
+        - WEBAPP_URL (normalized to scheme+host)
+        - Dev origins: http://localhost:5173, http://127.0.0.1:5173
+        """
+        origins: set[str] = set()
+        
+        # Add explicit WEBAPP_ORIGINS
+        if self.webapp_origins:
+            for origin in self.webapp_origins.split(","):
+                origin = origin.strip()
+                if origin:
+                    origins.add(origin)
+        
+        # Auto-add WEBAPP_URL (normalized to scheme+host, no trailing path)
+        if self.webapp_url:
+            webapp = self.webapp_url.strip().rstrip("/")
+            if webapp:
+                # Extract scheme+host (remove path if any)
+                from urllib.parse import urlparse
+                parsed = urlparse(webapp)
+                if parsed.scheme and parsed.netloc:
+                    origins.add(f"{parsed.scheme}://{parsed.netloc}")
+        
+        # Always add dev origins for local development
+        origins.add("http://localhost:5173")
+        origins.add("http://127.0.0.1:5173")
+        
+        return list(origins)
 
     @property
     def is_production(self) -> bool:

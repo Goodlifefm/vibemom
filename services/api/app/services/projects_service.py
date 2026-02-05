@@ -201,6 +201,23 @@ class ProjectsService:
 
         return [self._to_list_item_dto(s) for s in submissions]
 
+    async def create_draft(self, user_id: int) -> ProjectDetailsDTO:
+        """Create a new draft submission."""
+        submission = Submission(
+            user_id=user_id,
+            status="draft",
+            revision=0,
+            answers={},
+            current_step="q1",
+        )
+        self.session.add(submission)
+        await self.session.commit()
+        await self.session.refresh(submission)
+
+        logger.info(f"Created draft submission: id={submission.id}, user_id={user_id}")
+
+        return self._to_details_dto(submission)
+
     async def get_project_by_id(
         self,
         project_id: str,

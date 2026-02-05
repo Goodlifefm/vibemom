@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     v2_canary_mode: bool = False
     v2_allowlist: str = ""
 
+    # Mini App WebApp URL (Telegram WebApp)
+    webapp_url: str = ""  # e.g., https://myapp.vercel.app
+
+    # Public API URL for Mini App frontend
+    api_public_url: str = ""  # e.g., https://api.mydomain.com
+
     @property
     def is_ci_or_test(self) -> bool:
         """Check if running in CI/test environment."""

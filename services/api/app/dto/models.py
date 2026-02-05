@@ -247,6 +247,8 @@ class VersionResponse(BaseModel):
     git_branch: str
     build_time: str
     env: str
+    webapp_url: str
+    api_public_url: str
 
 
 class ErrorResponse(BaseModel):

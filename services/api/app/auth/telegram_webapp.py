@@ -52,6 +52,7 @@ def validate_init_data(
     init_data: str,
     bot_token: str | None = None,
     max_age_seconds: int = 86400,  # 24 hours
+    skip_verify: bool | None = None,
 ) -> TelegramUser:
     """
     Validate Telegram WebApp initData and extract user information.
@@ -68,6 +69,7 @@ def validate_init_data(
         init_data: The initData string from Telegram WebApp
         bot_token: Bot token for validation (uses settings if not provided)
         max_age_seconds: Maximum age of auth_date in seconds (default 24h)
+        skip_verify: Skip HMAC validation (MVP mode, insecure!)
 
     Returns:
         TelegramUser object with user data
@@ -78,12 +80,17 @@ def validate_init_data(
     if not init_data:
         raise InitDataValidationError("Empty initData")
 
+    settings = get_settings()
+
+    # Check skip verify mode
+    if skip_verify is None:
+        skip_verify = settings.tg_init_data_skip_verify
+
     # Get bot token
     if not bot_token:
-        settings = get_settings()
         bot_token = settings.bot_token
 
-    if not bot_token:
+    if not bot_token and not skip_verify:
         raise InitDataValidationError("Bot token not configured")
 
     try:
@@ -145,8 +152,13 @@ def validate_init_data(
             digestmod=hashlib.sha256
         ).hexdigest()
 
-        # Compare hashes (constant time comparison)
-        if not hmac.compare_digest(calculated_hash, received_hash):
+        # Compare hashes (constant time comparison) - skip in MVP mode
+        if skip_verify:
+            logger.warning(
+                "SKIP_VERIFY enabled - initData signature NOT validated (insecure!)",
+                extra={"telegram_id": "unknown"}
+            )
+        elif not hmac.compare_digest(calculated_hash, received_hash):
             logger.warning(
                 "initData hash mismatch",
                 extra={"calculated": calculated_hash[:16], "received": received_hash[:16]}
