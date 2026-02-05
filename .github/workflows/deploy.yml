@@ -61,7 +61,8 @@ jobs:
             echo "BUILD_TIME=$BUILD_TIME" >> .env
 
             docker compose pull || true
-            docker compose up -d --build --no-cache bot
+            docker compose build --no-cache bot
+            docker compose up -d bot
 
             docker compose ps
             echo "=== Bot logs (last 50 lines) ==="
