@@ -11,6 +11,7 @@
   --accent-color: #2481cc;
   --border-color: #e5e5e5;
   --card-bg: #f9f9f9;
+  --btn-text-color: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,6 +23,7 @@
     --accent-color: #4da3ff;
     --border-color: #333333;
     --card-bg: #252525;
+    --btn-text-color: #ffffff;
   }
 }
 
@@ -161,7 +163,7 @@ html, body {
 
 .btn-primary {
   background-color: var(--accent-color);
-  color: #ffffff;
+  color: var(--btn-text-color);
 }
 
 .btn-primary:hover {
@@ -281,6 +283,18 @@ html, body {
   font-size: 0.75rem;
   color: #ff9500;
   margin-top: 0.5rem;
+}
+
+/* Demo mode banner */
+.demo-banner {
+  background-color: rgba(255, 149, 0, 0.15);
+  color: #f5a623;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin: -1rem -1rem 1rem -1rem;
+  border-bottom: 1px solid rgba(255, 149, 0, 0.2);
 }
 
 /* Secondary button */

@@ -259,10 +259,15 @@ function App() {
 
   return (
     <div className="container">
+      {isDemo && (
+        <div className="demo-banner">
+          ⚠️ DEMO MODE — API не подключён, данные тестовые
+        </div>
+      )}
       <header className="header">
-        <h1 className="header-title">VibeMom Mini App</h1>
+        <h1 className="header-title">Мои проекты</h1>
         <p className="header-subtitle">
-          {isDemo ? 'Demo mode — API не подключён' : 'Ваши проекты'}
+          {isDemo ? 'Подключите API для работы с реальными данными' : 'Управление проектами'}
         </p>
         {authError && <p className="auth-error">{authError}</p>}
       </header>

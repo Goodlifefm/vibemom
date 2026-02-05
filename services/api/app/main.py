@@ -67,22 +67,28 @@ app = FastAPI(
 # =============================================================================
 # CORS Configuration
 # =============================================================================
+# Поддержка:
+# - Явные origins из env (ALLOWED_ORIGINS, WEBAPP_URL, etc.)
+# - Regex для *.vercel.app и app.vibemom.ru
+# - Dev origins (localhost:5173)
+# - Telegram origins (web.telegram.org, t.me)
 
 settings = get_settings()
 cors_origins = settings.get_cors_origins()
+cors_origin_regex = settings.get_cors_origin_regex()
 
-if cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "X-TG-INIT-DATA", "Authorization"],
-        expose_headers=["X-API-Version"],
-    )
-    logger.info(f"CORS enabled for origins: {cors_origins}")
-else:
-    logger.warning("CORS not configured - WEBAPP_ORIGINS and WEBAPP_URL are empty")
+# Добавляем CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-TG-INIT-DATA", "Authorization"],
+    expose_headers=["X-API-Version"],
+)
+logger.info(f"CORS enabled for origins: {cors_origins}")
+logger.info(f"CORS origin regex: {cors_origin_regex}")
 
 
 # =============================================================================

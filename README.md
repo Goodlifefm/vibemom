@@ -184,7 +184,13 @@ DRAFT → SUBMITTED (pending) → NEEDS_FIX → повторная подача 
 
 Telegram Mini App — веб-интерфейс "Кабинет" для управления проектами.
 
-> **Важно**: Telegram Mini App требует HTTPS. Для production используется Nginx + Let's Encrypt.
+**Расположение**: `services/webapp` (Vite + React + TypeScript)
+
+**Режимы работы**:
+- **DEMO** — если `VITE_API_PUBLIC_URL` не задан, показывает тестовые данные
+- **LIVE** — при заданном `VITE_API_PUBLIC_URL` работает с реальным API
+
+> **Важно**: Telegram Mini App требует HTTPS. Для production используется Nginx/Caddy + Let's Encrypt.
 
 ### Быстрый старт
 
@@ -275,7 +281,8 @@ make logs-prod
 
 ### Подробная документация
 
-- [Mini App Deployment Guide](docs/MINIAPP_DEPLOY.md) — полное руководство по деплою
+- **[Mini App Runbook](docs/MINIAPP_RUNBOOK.md)** — пошаговое руководство по развёртыванию (Vercel + VPS + SSL)
+- [Mini App Deployment Guide](docs/MINIAPP_DEPLOY.md) — детальное руководство по деплою
 
 ### Переменные окружения Mini App
 
@@ -340,6 +347,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 ## 📐 Документация
 
+- **[Mini App Runbook](docs/MINIAPP_RUNBOOK.md)** — пошаговое руководство по развёртыванию Mini App
 - [Mini App Deployment Guide](docs/MINIAPP_DEPLOY.md) — руководство по деплою Mini App на Vercel + VPS
 - [Mini App "Кабинет" — архитектура](docs/MINIAPP_CABINET_ARCHITECTURE.md) — план по выносу кабинетного UX в Telegram Mini App
 - [Mini App API Specification](docs/MINIAPP_API_SPEC.md) — REST API для Mini App (auth, projects, endpoints, curl examples)

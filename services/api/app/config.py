@@ -69,6 +69,7 @@ class Settings(BaseSettings):
         - Origins from ALLOWED_ORIGINS, API_CORS_ORIGINS or WEBAPP_ORIGINS (comma-separated)
         - WEBAPP_URL (normalized to scheme+host)
         - Dev origins: http://localhost:5173, http://127.0.0.1:5173
+        - Telegram origins: https://web.telegram.org, https://t.me
         """
         origins: set[str] = set()
         
@@ -94,7 +95,22 @@ class Settings(BaseSettings):
         origins.add("http://localhost:5173")
         origins.add("http://127.0.0.1:5173")
         
+        # Always add Telegram origins for WebApp
+        origins.add("https://web.telegram.org")
+        origins.add("https://t.me")
+        
         return list(origins)
+
+    def get_cors_origin_regex(self) -> str | None:
+        """
+        Get regex pattern for CORS origin validation.
+        
+        Supports:
+        - *.vercel.app (any Vercel deployment)
+        - app.vibemom.ru (future production domain)
+        """
+        # Regex для Vercel deployments и будущего продакшн домена
+        return r"https://.*\.vercel\.app|https://app\.vibemom\.ru"
 
     @property
     def is_production(self) -> bool:
