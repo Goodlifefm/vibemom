@@ -574,6 +574,22 @@ V2_MENU_HELP_SCREEN = """❓ Помощь / Команды
 
 V2_MENU_RESTART_DONE = """✅ Прогресс сброшен. Можете начать заполнение заново."""
 
+# Reply Keyboard Menu (bottom-sheet buttons)
+V2_REPLY_MENU_TITLE = """🏠 Главное меню
+Выберите нужный раздел 👇"""
+
+V2_REPLY_BTN_CURRENT_STEP = "📌 Текущий шаг"
+V2_REPLY_BTN_PROJECT = "📁 Проект"
+V2_REPLY_BTN_RESTART = "♻️ Начать заново"
+V2_REPLY_BTN_MY_PROJECTS = "📄 Мои проекты"
+V2_REPLY_BTN_CREATE = "➕ Создать проект"
+V2_REPLY_BTN_HELP = "❓ Помощь / Команды"
+V2_REPLY_BTN_MAIN_MENU = "🏠 Меню"
+V2_REPLY_BTN_CATALOG = "📚 Каталог"
+V2_REPLY_BTN_REQUEST = "✍️ Реквест"
+V2_REPLY_BTN_MY_REQUESTS = "🧾 Мои реквесты"
+V2_REPLY_BTN_LEADS = "👥 Лиды"
+
 COPY_IDS = [
     "START_MESSAGE",
     "SUBMIT_START",
@@ -796,6 +812,18 @@ COPY_IDS = [
     "V2_SETTINGS_HEADER",
     "V2_SETTINGS_PLACEHOLDER",
     "V2_MENU_NO_ACTIVE_WIZARD",
+    "V2_REPLY_MENU_TITLE",
+    "V2_REPLY_BTN_CURRENT_STEP",
+    "V2_REPLY_BTN_PROJECT",
+    "V2_REPLY_BTN_RESTART",
+    "V2_REPLY_BTN_MY_PROJECTS",
+    "V2_REPLY_BTN_CREATE",
+    "V2_REPLY_BTN_HELP",
+    "V2_REPLY_BTN_MAIN_MENU",
+    "V2_REPLY_BTN_CATALOG",
+    "V2_REPLY_BTN_REQUEST",
+    "V2_REPLY_BTN_MY_REQUESTS",
+    "V2_REPLY_BTN_LEADS",
 ]
 
 

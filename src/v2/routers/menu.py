@@ -1,21 +1,35 @@
 """
-V2 Menu Card: single message + inline keyboard with edit_message_text.
+V2 Menu Card: ReplyKeyboardMarkup (bottom-sheet) + InlineKeyboardMarkup.
 
 Callback namespace: m:* (m:root, m:step, m:project, m:help, m:close, etc.)
-Commands: /menu, text "🏠 Меню", "☰ Меню", "Меню"
+Commands: /menu, /catalog, /request, /my_requests, /leads
+Text triggers: "🏠 Меню", "☰ Меню", "Меню"
 
 UX:
-- /menu and "🏠 Меню" open main menu as a single card message
-- All interactions EDIT the same message (no new messages)
+- /menu shows ReplyKeyboardMarkup (bottom-sheet) + inline menu card
+- Reply keyboard layout:
+  Row1: 📌 Текущий шаг | 📁 Проект
+  Row2: ♻️ Начать заново (full width)
+  Row3: 📄 Мои проекты (full width)
+  Row4: ➕ Создать проект (full width)
+  Row5: 📚 Каталог | ✍️ Реквест
+  Row6: 🧾 Мои реквесты | 👥 Лиды
+  Row7: ❓ Помощь / Команды (full width)
+
+- All interactions via inline keyboard EDIT the same message (no new messages)
 - "✕ Закрыть" deletes the message or edits to "Меню закрыто"
 - Command buttons (m:cmd:*) call existing handlers and offer "В меню" button
 
 Sections:
 - 📌 Текущий шаг (m:step) - current wizard step info
 - 📁 Проект (m:project) - project commands screen
-- 🧭 Начать заново (m:restart) - restart wizard
+- ♻️ Начать заново (m:restart) - restart wizard
 - 📄 Мои проекты (m:my_projects) - /catalog handler
-- ➕ Создать проект (m:create_project) - /request handler
+- ➕ Создать проект (m:create_project) - /submit wizard
+- 📚 Каталог - /catalog handler
+- ✍️ Реквест - /request handler (buyer request)
+- 🧾 Мои реквесты - /my_requests handler
+- 👥 Лиды - /leads handler
 - ❓ Помощь/Команды (m:help) - help text
 - ✕ Закрыть (m:close) - close menu
 """
@@ -28,7 +42,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
-from src.bot.keyboards import persistent_reply_kb
+from src.bot.keyboards import persistent_reply_kb, reply_menu_keyboard_full, reply_menu_keyboard_with_actions
 from src.bot.messages import get_copy
 from src.v2.keyboards.menu import (
     kb_main_menu,
@@ -44,6 +58,20 @@ from src.v2.repo import (
 )
 from src.v2.fsm.states import V2FormSteps
 from src.v2.fsm.steps import get_step, get_step_index, STEP_KEYS
+
+
+# Reply keyboard button texts (for message handlers)
+REPLY_BTN_CURRENT_STEP = "📌 Текущий шаг"
+REPLY_BTN_PROJECT = "📁 Проект"
+REPLY_BTN_RESTART = "♻️ Начать заново"
+REPLY_BTN_MY_PROJECTS = "📄 Мои проекты"
+REPLY_BTN_CREATE = "➕ Создать проект"
+REPLY_BTN_HELP = "❓ Помощь / Команды"
+REPLY_BTN_MAIN_MENU = "🏠 Меню"
+REPLY_BTN_CATALOG = "📚 Каталог"
+REPLY_BTN_REQUEST = "✍️ Реквест"
+REPLY_BTN_MY_REQUESTS = "🧾 Мои реквесты"
+REPLY_BTN_LEADS = "👥 Лиды"
 
 logger = logging.getLogger(__name__)
 
@@ -159,11 +187,21 @@ async def open_main_menu(
 # Menu Triggers: /menu, "🏠 Меню", "☰ Меню", "Меню"
 # =============================================================================
 
-@router.message(F.text.in_(["☰ Меню", "🏠 Меню", "Меню"]))
+@router.message(F.text.in_(["☰ Меню", "🏠 Меню", "Меню", REPLY_BTN_MAIN_MENU]))
 @router.message(Command("menu"))
 async def handle_menu_trigger(message: Message, state: FSMContext) -> None:
-    """Open main menu card from text button or /menu command."""
-    logger.info("menu_trigger user_id=%s", message.from_user.id if message.from_user else 0)
+    """
+    Open main menu with ReplyKeyboardMarkup (bottom-sheet style).
+    Sends message + reply keyboard with all menu buttons.
+    """
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("menu_trigger user_id=%s action=open_reply_menu", user_id)
+    
+    # Send menu message with reply keyboard
+    text = get_copy("V2_REPLY_MENU_TITLE")
+    await message.answer(text, reply_markup=reply_menu_keyboard_with_actions())
+    
+    # Also send inline menu card for additional options
     await open_main_menu(message, state, is_edit=False)
 
 
@@ -641,6 +679,460 @@ async def cb_cmd_leads(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer("—", reply_markup=kb_to_menu_only())
     else:
         await callback.message.answer(text, reply_markup=kb_to_menu_only())
+
+
+# =============================================================================
+# V2 Command Handlers for /catalog, /request, /my_requests, /leads
+# These override V1 handlers when V2 is enabled
+# =============================================================================
+
+@router.message(Command("catalog"))
+async def cmd_catalog_v2(message: Message, state: FSMContext) -> None:
+    """V2 /catalog handler -> call handle_reply_catalog logic."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("cmd=catalog user_id=%s action=show_catalog", user_id)
+    
+    from src.bot.services import list_approved_projects
+    from src.bot.renderer import render_project_post
+    
+    await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    projects = await list_approved_projects()
+    if not projects:
+        text = get_copy("CATALOG_HEADER") + get_copy("CATALOG_EMPTY")
+        await message.answer(text, reply_markup=kb_to_menu_only())
+        return
+    
+    header = get_copy("CATALOG_HEADER")
+    parts = [header]
+    for p in projects:
+        parts.append(
+            render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+        )
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for p in projects:
+            await message.answer(
+                render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+            )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
+
+
+@router.message(Command("request"))
+async def cmd_request_v2(message: Message, state: FSMContext) -> None:
+    """V2 /request handler -> start buyer request flow."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("cmd=request user_id=%s action=start_buyer_request", user_id)
+    
+    from src.bot.fsm.states import BuyerRequestStates
+    
+    await state.clear()
+    await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    await state.set_state(BuyerRequestStates.what)
+    await message.answer(get_copy("REQUEST_START"))
+    await message.answer(get_copy("REQUEST_Q1_WHAT"))
+
+
+@router.message(Command("my_requests"))
+async def cmd_my_requests_v2(message: Message, state: FSMContext) -> None:
+    """V2 /my_requests handler -> show buyer requests."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("cmd=my_requests user_id=%s action=show_my_requests", user_id)
+    
+    from src.bot.services import list_my_requests_with_projects
+    from src.bot.renderer import render_buyer_request_summary, render_project_post
+    
+    user = await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    requests_list, leads_list, all_projects = await list_my_requests_with_projects(user.id)
+    
+    if not requests_list:
+        await message.answer(
+            get_copy("MY_REQUESTS_HEADER") + get_copy("MY_REQUESTS_EMPTY"),
+            reply_markup=kb_to_menu_only(),
+        )
+        return
+    
+    header = get_copy("MY_REQUESTS_HEADER")
+    lead_by_req: dict = {}
+    for lead in leads_list:
+        if lead.buyer_request_id:
+            lead_by_req.setdefault(lead.buyer_request_id, []).append(lead)
+    
+    parts = [header]
+    for req in requests_list:
+        parts.append(render_buyer_request_summary(req.what, req.budget, req.contact))
+        for lead in lead_by_req.get(req.id, []):
+            p = all_projects.get(lead.project_id)
+            if p:
+                parts.append(
+                    render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                )
+    
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for req in requests_list:
+            await message.answer(render_buyer_request_summary(req.what, req.budget, req.contact))
+            for lead in lead_by_req.get(req.id, []):
+                p = all_projects.get(lead.project_id)
+                if p:
+                    await message.answer(
+                        render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                    )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
+
+
+@router.message(Command("leads"))
+async def cmd_leads_v2(message: Message, state: FSMContext) -> None:
+    """V2 /leads handler -> show seller leads."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("cmd=leads user_id=%s action=show_leads", user_id)
+    
+    from src.bot.services import list_leads_for_seller
+    from src.bot.renderer import render_project_post
+    
+    user = await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    my_projects, leads_list = await list_leads_for_seller(user.id)
+    
+    if not my_projects or not leads_list:
+        await message.answer(
+            get_copy("LEADS_HEADER") + get_copy("LEADS_EMPTY"),
+            reply_markup=kb_to_menu_only(),
+        )
+        return
+    
+    header = get_copy("LEADS_HEADER")
+    proj_by_id = {p.id: p for p in my_projects}
+    parts = [header]
+    
+    for lead in leads_list:
+        p = proj_by_id.get(lead.project_id)
+        if p:
+            parts.append(render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact))
+    
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for lead in leads_list:
+            p = proj_by_id.get(lead.project_id)
+            if p:
+                await message.answer(
+                    render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
+
+
+# =============================================================================
+# Reply Keyboard Button Handlers (text message triggers)
+# =============================================================================
+
+@router.message(F.text == REPLY_BTN_CURRENT_STEP)
+async def handle_reply_current_step(message: Message, state: FSMContext) -> None:
+    """Handle '📌 Текущий шаг' reply button -> show current step info."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=current_step user_id=%s", user_id)
+    
+    step_info = await _get_step_info(state)
+    text = get_copy("V2_MENU_STEP_SCREEN").format(step_info=step_info)
+    await message.answer(text, reply_markup=kb_to_menu_only(), parse_mode="HTML")
+
+
+@router.message(F.text == REPLY_BTN_PROJECT)
+async def handle_reply_project(message: Message, state: FSMContext) -> None:
+    """Handle '📁 Проект' reply button -> show project commands screen."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=project user_id=%s", user_id)
+    
+    text = get_copy("V2_MENU_PROJECT_SCREEN")
+    await message.answer(text, reply_markup=kb_project_screen(), parse_mode="HTML")
+
+
+@router.message(F.text == REPLY_BTN_RESTART)
+async def handle_reply_restart(message: Message, state: FSMContext) -> None:
+    """Handle '♻️ Начать заново' reply button -> show restart confirmation."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=restart user_id=%s", user_id)
+    
+    text = get_copy("V2_MENU_RESTART_CONFIRM_TEXT")
+    await message.answer(text, reply_markup=kb_restart_confirm_new(), parse_mode="HTML")
+
+
+@router.message(F.text == REPLY_BTN_MY_PROJECTS)
+async def handle_reply_my_projects(message: Message, state: FSMContext) -> None:
+    """Handle '📄 Мои проекты' reply button -> call /catalog logic."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=my_projects user_id=%s", user_id)
+    
+    # Call existing catalog logic
+    from src.bot.services import list_approved_projects
+    from src.bot.renderer import render_project_post
+    
+    await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    projects = await list_approved_projects()
+    if not projects:
+        text = get_copy("CATALOG_HEADER") + get_copy("CATALOG_EMPTY")
+        await message.answer(text, reply_markup=kb_to_menu_only())
+        return
+    
+    header = get_copy("CATALOG_HEADER")
+    parts = [header]
+    for p in projects:
+        parts.append(
+            render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+        )
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for p in projects:
+            await message.answer(
+                render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+            )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
+
+
+@router.message(F.text == REPLY_BTN_CREATE)
+async def handle_reply_create(message: Message, state: FSMContext) -> None:
+    """Handle '➕ Создать проект' reply button -> start wizard."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=create_project user_id=%s", user_id)
+    
+    # Start wizard (create new submission)
+    user = await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    sub = await create_submission(user.id, current_step="q1")
+    await state.update_data(**{
+        DATA_SUBMISSION_ID: str(sub.id),
+        DATA_STEP_KEY: "q1",
+    })
+    await state.set_state(V2FormSteps.answering)
+    
+    # Show first step
+    from src.v2.routers.form import show_question
+    await message.answer(
+        get_copy("V2_MENU_HINT").strip(),
+        reply_markup=persistent_reply_kb(),
+    )
+    await show_question(message, state, "q1")
+    
+    logger.info("create_project_done user_id=%s submission_id=%s", user_id, sub.id)
+
+
+@router.message(F.text == REPLY_BTN_HELP)
+async def handle_reply_help(message: Message, state: FSMContext) -> None:
+    """Handle '❓ Помощь / Команды' reply button -> show help text."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=help user_id=%s", user_id)
+    
+    text = get_copy("V2_MENU_HELP_SCREEN")
+    await message.answer(text, reply_markup=kb_to_menu_only(), parse_mode="HTML")
+
+
+@router.message(F.text == REPLY_BTN_CATALOG)
+async def handle_reply_catalog(message: Message, state: FSMContext) -> None:
+    """Handle '📚 Каталог' reply button -> call /catalog logic."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=catalog user_id=%s action=show_catalog", user_id)
+    
+    # Same logic as handle_reply_my_projects
+    from src.bot.services import list_approved_projects
+    from src.bot.renderer import render_project_post
+    
+    await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    projects = await list_approved_projects()
+    if not projects:
+        text = get_copy("CATALOG_HEADER") + get_copy("CATALOG_EMPTY")
+        await message.answer(text, reply_markup=kb_to_menu_only())
+        return
+    
+    header = get_copy("CATALOG_HEADER")
+    parts = [header]
+    for p in projects:
+        parts.append(
+            render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+        )
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for p in projects:
+            await message.answer(
+                render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+            )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
+
+
+@router.message(F.text == REPLY_BTN_REQUEST)
+async def handle_reply_request(message: Message, state: FSMContext) -> None:
+    """Handle '✍️ Реквест' reply button -> start buyer request flow."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=request user_id=%s action=start_buyer_request", user_id)
+    
+    # Start buyer request flow
+    from src.bot.fsm.states import BuyerRequestStates
+    
+    await state.clear()
+    await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    await state.set_state(BuyerRequestStates.what)
+    await message.answer(get_copy("REQUEST_START"))
+    await message.answer(get_copy("REQUEST_Q1_WHAT"))
+
+
+@router.message(F.text == REPLY_BTN_MY_REQUESTS)
+async def handle_reply_my_requests(message: Message, state: FSMContext) -> None:
+    """Handle '🧾 Мои реквесты' reply button -> call /my_requests logic."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=my_requests user_id=%s action=show_my_requests", user_id)
+    
+    # Call existing logic
+    from src.bot.services import list_my_requests_with_projects
+    from src.bot.renderer import render_buyer_request_summary, render_project_post
+    
+    user = await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    requests_list, leads_list, all_projects = await list_my_requests_with_projects(user.id)
+    
+    if not requests_list:
+        await message.answer(
+            get_copy("MY_REQUESTS_HEADER") + get_copy("MY_REQUESTS_EMPTY"),
+            reply_markup=kb_to_menu_only(),
+        )
+        return
+    
+    header = get_copy("MY_REQUESTS_HEADER")
+    lead_by_req: dict = {}
+    for lead in leads_list:
+        if lead.buyer_request_id:
+            lead_by_req.setdefault(lead.buyer_request_id, []).append(lead)
+    
+    parts = [header]
+    for req in requests_list:
+        parts.append(render_buyer_request_summary(req.what, req.budget, req.contact))
+        for lead in lead_by_req.get(req.id, []):
+            p = all_projects.get(lead.project_id)
+            if p:
+                parts.append(
+                    render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                )
+    
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for req in requests_list:
+            await message.answer(render_buyer_request_summary(req.what, req.budget, req.contact))
+            for lead in lead_by_req.get(req.id, []):
+                p = all_projects.get(lead.project_id)
+                if p:
+                    await message.answer(
+                        render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                    )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
+
+
+@router.message(F.text == REPLY_BTN_LEADS)
+async def handle_reply_leads(message: Message, state: FSMContext) -> None:
+    """Handle '👥 Лиды' reply button -> call /leads logic."""
+    user_id = message.from_user.id if message.from_user else 0
+    logger.info("reply_btn=leads user_id=%s action=show_leads", user_id)
+    
+    # Call existing logic
+    from src.bot.services import list_leads_for_seller
+    from src.bot.renderer import render_project_post
+    
+    user = await get_or_create_user(
+        user_id,
+        message.from_user.username if message.from_user else None,
+        message.from_user.full_name if message.from_user else None,
+    )
+    
+    my_projects, leads_list = await list_leads_for_seller(user.id)
+    
+    if not my_projects or not leads_list:
+        await message.answer(
+            get_copy("LEADS_HEADER") + get_copy("LEADS_EMPTY"),
+            reply_markup=kb_to_menu_only(),
+        )
+        return
+    
+    header = get_copy("LEADS_HEADER")
+    proj_by_id = {p.id: p for p in my_projects}
+    parts = [header]
+    
+    for lead in leads_list:
+        p = proj_by_id.get(lead.project_id)
+        if p:
+            parts.append(render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact))
+    
+    text = "\n".join(parts)
+    
+    if len(text) > 4000:
+        await message.answer(header)
+        for lead in leads_list:
+            p = proj_by_id.get(lead.project_id)
+            if p:
+                await message.answer(
+                    render_project_post(p.title, p.description, p.stack, p.link, p.price, p.contact)
+                )
+        await message.answer("—", reply_markup=kb_to_menu_only())
+    else:
+        await message.answer(text, reply_markup=kb_to_menu_only())
 
 
 # =============================================================================

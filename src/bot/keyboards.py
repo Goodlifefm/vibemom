@@ -31,6 +31,72 @@ def persistent_reply_kb() -> ReplyKeyboardMarkup:
     )
 
 
+def reply_menu_keyboard_full() -> ReplyKeyboardMarkup:
+    """
+    Full reply keyboard menu (bottom-sheet style).
+    
+    Layout:
+    Row1: 📌 Текущий шаг | 📁 Проект
+    Row2: ♻️ Начать заново (full width)
+    Row3: 📄 Мои проекты (full width)
+    Row4: ➕ Создать проект (full width)
+    Row5: ❓ Помощь / Команды (full width)
+    Row6: 🏠 Меню (full width) — always returns to menu
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_CURRENT_STEP").strip()),
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_PROJECT").strip()),
+            ],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_RESTART").strip())],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_MY_PROJECTS").strip())],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_CREATE").strip())],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_HELP").strip())],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+def reply_menu_keyboard_with_actions() -> ReplyKeyboardMarkup:
+    """
+    Extended reply keyboard with Каталог, Реквест, Мои реквесты, Лиды buttons.
+    Used when user needs quick access to these actions.
+    
+    Layout:
+    Row1: 📌 Текущий шаг | 📁 Проект  
+    Row2: ♻️ Начать заново (full width)
+    Row3: 📄 Мои проекты (full width)
+    Row4: ➕ Создать проект (full width)
+    Row5: 📚 Каталог | ✍️ Реквест
+    Row6: 🧾 Мои реквесты | 👥 Лиды
+    Row7: ❓ Помощь / Команды (full width)
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_CURRENT_STEP").strip()),
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_PROJECT").strip()),
+            ],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_RESTART").strip())],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_MY_PROJECTS").strip())],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_CREATE").strip())],
+            [
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_CATALOG").strip()),
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_REQUEST").strip()),
+            ],
+            [
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_MY_REQUESTS").strip()),
+                KeyboardButton(text=get_copy("V2_REPLY_BTN_LEADS").strip()),
+            ],
+            [KeyboardButton(text=get_copy("V2_REPLY_BTN_HELP").strip())],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
 def reply_menu_keyboard() -> ReplyKeyboardMarkup:
     """Persistent reply keyboard with single button: 🏠 Меню. Shown from any state.
     DEPRECATED: Use persistent_reply_kb() for the new '☰ Меню' button.
