@@ -56,6 +56,46 @@ docker compose up --build
 docker compose up -d --build
 ```
 
+### Mini App API
+
+Запуск только API сервиса:
+
+```bash
+docker compose up -d --build api
+```
+
+Проверка здоровья API:
+
+```bash
+curl http://localhost:8000/healthz
+curl http://localhost:8000/version
+```
+
+Тестирование аутентификации (см. [docs/MINIAPP_API_SPEC.md](docs/MINIAPP_API_SPEC.md) для полного списка эндпоинтов):
+
+```bash
+# Получите initData из Telegram WebApp (window.Telegram.WebApp.initData)
+# Пример запроса:
+curl -X POST http://localhost:8000/auth/telegram \
+  -H "Content-Type: application/json" \
+  -d '{"initData": "query_id=...&user=...&auth_date=...&hash=..."}'
+
+# После получения токена:
+curl http://localhost:8000/me \
+  -H "Authorization: Bearer <access_token>"
+
+curl http://localhost:8000/projects/my \
+  -H "Authorization: Bearer <access_token>"
+```
+
+#### Переменные окружения для API
+
+| Переменная | Описание | По умолчанию |
+|------------|----------|--------------|
+| `API_JWT_SECRET` | Секрет для подписи JWT токенов | `change-me-in-production` |
+| `API_JWT_TTL_MIN` | Время жизни токена в минутах | `43200` (30 дней) |
+| `WEBAPP_ORIGINS` | Разрешённые CORS origins (через запятую) | — |
+
 Бот поднимается после готовности БД. По умолчанию при старте выполняет миграции (`AUTO_MIGRATE=true`), но только если `APP_ENV!=production`.
 Для продакшена установите `APP_ENV=production` (автомиграции всегда отключены) и запускайте миграции явно: `docker compose run --rm bot alembic upgrade head`.
 
@@ -186,6 +226,16 @@ chmod 600 ~/.ssh/authorized_keys
 3. В логах job должны быть: `git fetch`, `docker compose up -d --build`, `docker compose ps`, последние 120 строк логов сервиса `bot`.
 
 Если основная ветка у вас не `main` и не `master`, в файле `.github/workflows/deploy.yml` измените строку `branches: [main, master]` на нужную ветку (например `branches: [production]`).
+
+## 🎨 Design
+
+- [Mini App Design System](docs/MINIAPP_DESIGN_SYSTEM.md) — дизайн-система, UI-паттерны, экраны и принципы
+
+## 📐 Документация
+
+- [Mini App "Кабинет" — архитектура](docs/MINIAPP_CABINET_ARCHITECTURE.md) — план по выносу кабинетного UX в Telegram Mini App
+- [Mini App API Specification](docs/MINIAPP_API_SPEC.md) — REST API для Mini App (auth, projects, endpoints, curl examples)
+- [Mini App Data Contract](docs/MINIAPP_DATA_CONTRACT.md) — DTO-модели (с derived fields), V2 answers registry, legacy mapping, identity rules
 
 ## Спецификация
 
