@@ -31,19 +31,23 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ steps.ssh_port.outputs.port }}
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
-            set -e
+            set -euo pipefail
+
+            echo "=== Deploy started at $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
 
             cd /root/vibemom || { echo "Error: /root/vibemom not found"; exit 1; }
 
-            git fetch --all
+            # Ensure we're on the correct branch and fully synced
+            git fetch --all --prune
+            git checkout v2-editor 2>/dev/null || git checkout -b v2-editor origin/v2-editor
             git reset --hard origin/v2-editor
 
-            # Export version info for deployment verification
-            export GIT_SHA=$(git rev-parse --short HEAD)
-            export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-            export BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            # Version info for deployment verification
+            GIT_SHA=$(git rev-parse --short HEAD)
+            GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
             echo "=== Deploying version ==="
             echo "SHA: $GIT_SHA"
@@ -51,19 +55,51 @@ jobs:
             echo "Build: $BUILD_TIME"
             echo "========================="
 
-            # Write version vars to .env (append/replace)
-            grep -v '^GIT_SHA=' .env > .env.tmp 2>/dev/null || true
-            grep -v '^GIT_BRANCH=' .env.tmp > .env.tmp2 2>/dev/null || true
-            grep -v '^BUILD_TIME=' .env.tmp2 > .env 2>/dev/null || true
-            rm -f .env.tmp .env.tmp2
-            echo "GIT_SHA=$GIT_SHA" >> .env
-            echo "GIT_BRANCH=$GIT_BRANCH" >> .env
-            echo "BUILD_TIME=$BUILD_TIME" >> .env
+            # Write version vars to .env (atomic update)
+            if [ -f .env ]; then
+              grep -v -E '^(GIT_SHA|GIT_BRANCH|BUILD_TIME)=' .env > .env.new || true
+            else
+              touch .env.new
+            fi
+            echo "GIT_SHA=$GIT_SHA" >> .env.new
+            echo "GIT_BRANCH=$GIT_BRANCH" >> .env.new
+            echo "BUILD_TIME=$BUILD_TIME" >> .env.new
+            mv .env.new .env
 
-            docker compose pull || true
-            docker compose build --no-cache bot
-            docker compose up -d bot
+            # Verify docker-compose has expected services
+            echo "=== Configured services ==="
+            docker compose config --services
 
+            # Pull base images
+            docker compose pull db || true
+
+            # Build fresh (no cache) for bot and api
+            echo "=== Building bot and api (no-cache) ==="
+            docker compose build --no-cache bot api
+
+            # Deploy with force-recreate to ensure fresh containers
+            echo "=== Starting services ==="
+            docker compose up -d --force-recreate db bot api
+
+            # Wait for services to stabilize
+            sleep 5
+
+            # Show running containers
+            echo "=== Container status ==="
             docker compose ps
-            echo "=== Bot logs (last 50 lines) ==="
-            docker compose logs --tail=50 bot
+
+            # Show bot logs
+            echo "=== Bot logs (last 80 lines) ==="
+            docker compose logs --tail=80 bot
+
+            # Show api logs (may not be running yet on first deploy)
+            echo "=== API logs (last 80 lines) ==="
+            docker compose logs --tail=80 api || echo "(api service not running yet)"
+
+            # Health checks
+            echo "=== Health checks ==="
+            sleep 3
+            curl -sS --max-time 5 http://localhost:8000/healthz || echo "API healthz: not responding (may still be starting)"
+            curl -sS --max-time 5 http://localhost:8000/version || echo "API version: not responding"
+
+            echo "=== Deploy completed at $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
