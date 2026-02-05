@@ -55,9 +55,14 @@ jobs:
             echo "Build: $BUILD_TIME"
             echo "========================="
 
-            # Write version vars to .env (atomic update)
+            # Write version vars to .env (atomic update) and fix DATABASE_URL
             if [ -f .env ]; then
+              # Remove version vars and ensure correct DATABASE_URL
               grep -v -E '^(GIT_SHA|GIT_BRANCH|BUILD_TIME)=' .env > .env.new || true
+              
+              # Fix DATABASE_URL: replace 'vibemom' with 'vibe_market' and 'localhost' with 'db'
+              sed -i 's/vibemom/vibe_market/g' .env.new
+              sed -i 's/@localhost:/@db:/g' .env.new
             else
               touch .env.new
             fi
@@ -65,6 +70,9 @@ jobs:
             echo "GIT_BRANCH=$GIT_BRANCH" >> .env.new
             echo "BUILD_TIME=$BUILD_TIME" >> .env.new
             mv .env.new .env
+            
+            echo "=== DATABASE_URL in .env ==="
+            grep DATABASE_URL .env || echo "DATABASE_URL not set in .env (will use docker-compose default)"
 
             # Verify docker-compose has expected services
             echo "=== Configured services ==="
