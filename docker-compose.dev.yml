@@ -1,0 +1,9 @@
+services:
+  # Development overrides: publish ports for local debugging tools.
+  db:
+    ports:
+      - "5432:5432"
+
+  api:
+    ports:
+      - "8000:8000"

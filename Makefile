@@ -44,17 +44,19 @@ help:
 # Development
 # =============================================================================
 
+DEV_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.dev.yml
+
 up:
-	docker compose up -d --build db bot api
+	$(DEV_COMPOSE) up -d --build db bot api
 
 down:
-	docker compose down
+	$(DEV_COMPOSE) down
 
 build:
-	docker compose build --no-cache bot api
+	$(DEV_COMPOSE) build --no-cache bot api
 
 logs:
-	docker compose logs -f
+	$(DEV_COMPOSE) logs -f
 
 # =============================================================================
 # Production
@@ -151,17 +153,17 @@ endif
 
 # Show running containers
 ps:
-	docker compose ps
+	$(DEV_COMPOSE) ps
 
 ps-prod:
 	$(PROD_COMPOSE) ps
 
 # Shell into container
 shell-api:
-	docker compose exec api sh
+	$(DEV_COMPOSE) exec api sh
 
 shell-bot:
-	docker compose exec bot bash
+	$(DEV_COMPOSE) exec bot bash
 
 shell-nginx:
 	$(PROD_COMPOSE) exec nginx sh

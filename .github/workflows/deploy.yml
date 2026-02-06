@@ -60,10 +60,6 @@ jobs:
             if [ -f .env ]; then
               # Remove version vars and ensure correct DATABASE_URL
               grep -v -E '^(GIT_SHA|GIT_BRANCH|BUILD_TIME)=' .env > .env.new || true
-              
-              # Fix DATABASE_URL: replace 'vibemom' with 'vibe_market' and 'localhost' with 'db'
-              sed -i 's/vibemom/vibe_market/g' .env.new
-              sed -i 's/@localhost:/@db:/g' .env.new
             else
               touch .env.new
             fi
@@ -137,8 +133,8 @@ jobs:
             
             # Internal health check (always works)
             echo "Internal API health check:"
-            curl -sS --max-time 5 http://localhost:8000/healthz || echo "API healthz: not responding (may still be starting)"
-            curl -sS --max-time 5 http://localhost:8000/version || echo "API version: not responding"
+            docker compose exec -T api curl -sS --max-time 5 http://localhost:8000/healthz || echo "API healthz: not responding (may still be starting)"
+            docker compose exec -T api curl -sS --max-time 5 http://localhost:8000/version || echo "API version: not responding"
             
             # HTTPS health check (optional - only if domain is configured)
             # Read API_DOMAIN from .env if present
