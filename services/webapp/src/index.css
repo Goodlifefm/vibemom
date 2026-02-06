@@ -263,6 +263,49 @@ html, body {
   margin-bottom: 1rem;
 }
 
+.api-unavailable {
+  align-items: stretch;
+  text-align: left;
+}
+
+.diagnostics-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--card-bg);
+}
+
+.diagnostics-panel summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.diagnostics-content {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.diagnostics-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.diagnostics-key {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.diagnostics-value {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
 /* Empty state */
 .empty-state {
   display: flex;

@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import './index.css';
+import { getApiBaseUrl } from './config/api';
 import {
   ApiError,
+  clearToken,
   authenticate,
   createDraft,
+  getApiErrorInfo,
   getProjects,
   getToken,
-  isApiEnabled,
+  type ApiErrorInfo,
   type Project,
 } from './lib/api';
 
 type ProjectStatus = 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
 
-// Demo projects for fallback mode
 const DEMO_PROJECTS: Project[] = [
   {
     id: '1',
@@ -81,6 +83,13 @@ const STATUS_LABELS: Record<ProjectStatus, { label: string; className: string }>
   rejected: { label: 'Отклонён', className: 'badge-rejected' },
 };
 
+function isApiUnavailableError(error: ApiErrorInfo): boolean {
+  if (error.kind === 'network' || error.kind === 'cors') {
+    return true;
+  }
+  return error.kind === 'http' && typeof error.status === 'number' && error.status >= 500;
+}
+
 function ProjectCard({ project }: { project: Project }) {
   const statusInfo = STATUS_LABELS[project.status] || STATUS_LABELS.draft;
 
@@ -92,10 +101,7 @@ function ProjectCard({ project }: { project: Project }) {
       </div>
       <div className="card-body">
         <div className="progress-bar">
-          <div
-            className="progress-bar-fill"
-            style={{ width: `${project.completion_percent}%` }}
-          />
+          <div className="progress-bar-fill" style={{ width: `${project.completion_percent}%` }} />
         </div>
         <p className="progress-text">{project.completion_percent}% заполнено</p>
         {project.has_fix_request && project.fix_request_preview && (
@@ -121,9 +127,49 @@ function ErrorMessage({ message, onRetry }: { message: string; onRetry?: () => v
       <p>❌ {message}</p>
       {onRetry && (
         <button className="btn btn-secondary" onClick={onRetry}>
-          Попробовать снова
+          Retry
         </button>
       )}
+    </div>
+  );
+}
+
+function ApiUnavailablePanel({
+  apiBaseUrl,
+  errorInfo,
+  onRetry,
+}: {
+  apiBaseUrl: string;
+  errorInfo: ApiErrorInfo;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="error api-unavailable">
+      <p>API недоступен. Попробуйте ещё раз.</p>
+      <button className="btn btn-secondary" onClick={onRetry}>
+        Retry
+      </button>
+      <details className="diagnostics-panel">
+        <summary>Диагностика</summary>
+        <div className="diagnostics-content">
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">apiBaseUrl</span>
+            <span className="diagnostics-value">{apiBaseUrl}</span>
+          </div>
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">error.kind</span>
+            <span className="diagnostics-value">{errorInfo.kind}</span>
+          </div>
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">error.status</span>
+            <span className="diagnostics-value">{errorInfo.status ?? '-'}</span>
+          </div>
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">error.message</span>
+            <span className="diagnostics-value">{errorInfo.message}</span>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }
@@ -138,119 +184,132 @@ function EmptyState() {
 }
 
 function App() {
+  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
+  const isDemo = apiBaseUrl === null;
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [isDemo, setIsDemo] = useState(!isApiEnabled());
   const [authError, setAuthError] = useState<string | null>(null);
+  const [apiUnavailable, setApiUnavailable] = useState<ApiErrorInfo | null>(null);
 
-  // Try to authenticate with Telegram WebApp
-  const tryAuth = useCallback(async (): Promise<boolean> => {
-    // Check if Telegram WebApp is available
+  const handleApiFailure = useCallback((err: unknown, fallbackMessage: string) => {
+    const info = getApiErrorInfo(err);
+    if (isApiUnavailableError(info)) {
+      setApiUnavailable(info);
+      setError(null);
+      return;
+    }
+    setApiUnavailable(null);
+    setError(info.message || fallbackMessage);
+  }, []);
+
+  const tryAuth = useCallback(async (): Promise<void> => {
     const tg = (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp;
     const initData = tg?.initData;
 
     if (!initData) {
-      // No Telegram context - can't authenticate
-      return false;
+      throw new ApiError({
+        kind: 'unknown',
+        code: 'INIT_DATA_MISSING',
+        message: 'Telegram initData не найден. Откройте Mini App из Telegram.',
+      });
     }
 
-    try {
-      await authenticate(initData);
-      return true;
-    } catch (err) {
-      console.error('Auth failed:', err);
-      if (err instanceof ApiError) {
-        setAuthError(`Ошибка авторизации: ${err.message}`);
-      }
-      return false;
-    }
+    await authenticate(initData);
+    setAuthError(null);
   }, []);
 
-  // Load projects from API or use demo data
   const loadProjects = useCallback(async () => {
-    if (!isApiEnabled()) {
-      // Demo mode
+    if (isDemo) {
       setProjects(DEMO_PROJECTS);
+      setApiUnavailable(null);
+      setError(null);
+      setAuthError(null);
       setLoading(false);
-      setIsDemo(true);
       return;
     }
 
     setLoading(true);
     setError(null);
+    setApiUnavailable(null);
 
     try {
-      // Check if we have a token, if not try to authenticate
       if (!getToken()) {
-        const authenticated = await tryAuth();
-        if (!authenticated) {
-          // Fall back to demo mode if auth fails
-          setProjects(DEMO_PROJECTS);
-          setIsDemo(true);
+        await tryAuth();
+      }
+
+      const data = await getProjects();
+      setProjects(data);
+      setAuthError(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.kind === 'http' && err.status === 401) {
+        clearToken();
+        try {
+          await tryAuth();
+          const retriedData = await getProjects();
+          setProjects(retriedData);
+          setAuthError(null);
+          setError(null);
+          setApiUnavailable(null);
+          setLoading(false);
+          return;
+        } catch (retryErr) {
+          const retryInfo = getApiErrorInfo(retryErr);
+          if (isApiUnavailableError(retryInfo)) {
+            setApiUnavailable(retryInfo);
+            setError(null);
+            setAuthError(null);
+          } else {
+            setApiUnavailable(null);
+            setAuthError(retryInfo.message);
+            setError('Не удалось загрузить проекты');
+          }
+          setProjects([]);
           setLoading(false);
           return;
         }
       }
 
-      const data = await getProjects();
-      setProjects(data);
-      setIsDemo(false);
-    } catch (err) {
-      console.error('Failed to load projects:', err);
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          // Token expired, try to re-authenticate
-          const authenticated = await tryAuth();
-          if (authenticated) {
-            try {
-              const data = await getProjects();
-              setProjects(data);
-              setIsDemo(false);
-              setError(null);
-              return;
-            } catch (retryErr) {
-              console.error('Retry failed:', retryErr);
-            }
-          }
-          // Fall back to demo mode
-          setProjects(DEMO_PROJECTS);
-          setIsDemo(true);
-        } else {
-          setError(err.message);
-        }
+      handleApiFailure(err, 'Не удалось загрузить проекты');
+      const errInfo = getApiErrorInfo(err);
+      if (!isApiUnavailableError(errInfo) && errInfo.message) {
+        setAuthError(errInfo.message);
       } else {
-        setError('Не удалось загрузить проекты');
+        setAuthError(null);
       }
+      setProjects([]);
     } finally {
       setLoading(false);
     }
-  }, [tryAuth]);
+  }, [handleApiFailure, isDemo, tryAuth]);
 
-  // Initial load
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
 
-  // Handle create project
   const handleCreateProject = async () => {
     if (isDemo) {
       alert('Создание проекта будет доступно после подключения API');
       return;
     }
 
+    if (apiUnavailable) {
+      alert('API недоступен. Нажмите Retry и попробуйте снова.');
+      return;
+    }
+
     setCreating(true);
     try {
       await createDraft();
-      // Refresh project list
       await loadProjects();
     } catch (err) {
-      console.error('Failed to create project:', err);
-      if (err instanceof ApiError) {
-        alert(`Ошибка: ${err.message}`);
+      const info = getApiErrorInfo(err);
+      if (isApiUnavailableError(info)) {
+        setApiUnavailable(info);
       } else {
-        alert('Не удалось создать проект');
+        alert(`Ошибка: ${info.message || 'Не удалось создать проект'}`);
       }
     } finally {
       setCreating(false);
@@ -259,11 +318,8 @@ function App() {
 
   return (
     <div className="container">
-      {isDemo && (
-        <div className="demo-banner">
-          ⚠️ DEMO MODE — API не подключён, данные тестовые
-        </div>
-      )}
+      {isDemo && <div className="demo-banner">⚠️ DEMO MODE — API не подключён, данные тестовые</div>}
+
       <header className="header">
         <h1 className="header-title">Мои проекты</h1>
         <p className="header-subtitle">
@@ -278,22 +334,18 @@ function App() {
 
           {loading ? (
             <LoadingSpinner />
+          ) : apiUnavailable && apiBaseUrl ? (
+            <ApiUnavailablePanel apiBaseUrl={apiBaseUrl} errorInfo={apiUnavailable} onRetry={loadProjects} />
           ) : error ? (
             <ErrorMessage message={error} onRetry={loadProjects} />
           ) : projects.length === 0 ? (
             <EmptyState />
           ) : (
-            projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))
+            projects.map((project) => <ProjectCard key={project.id} project={project} />)
           )}
         </section>
 
-        <button
-          className="btn btn-primary btn-full"
-          onClick={handleCreateProject}
-          disabled={creating || loading}
-        >
+        <button className="btn btn-primary btn-full" onClick={handleCreateProject} disabled={creating || loading}>
           {creating ? '⏳ Создание...' : '➕ Создать проект'}
         </button>
       </main>
@@ -302,3 +354,4 @@ function App() {
 }
 
 export default App;
+

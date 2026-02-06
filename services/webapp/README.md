@@ -17,18 +17,25 @@ Create `.env.local` for local development or set in Vercel for production:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `VITE_API_PUBLIC_URL` | No | API base URL (e.g., `https://api.yourdomain.com`). If not set, app runs in demo mode. |
+| `VITE_API_PUBLIC_URL` | No | Recommended API base URL for Vercel/client build (e.g., `https://api.yourdomain.com`). |
+| `API_PUBLIC_URL` | No | Fallback API base URL for local/monorepo builds when `VITE_API_PUBLIC_URL` is empty. |
+
+Priority at runtime:
+1. `VITE_API_PUBLIC_URL`
+2. `API_PUBLIC_URL`
+
+If both are empty, app runs in demo mode.
 
 ### Demo Mode
 
-When `VITE_API_PUBLIC_URL` is not set:
+When both `VITE_API_PUBLIC_URL` and `API_PUBLIC_URL` are not set:
 - App shows mock data
 - "Create project" button shows alert
 - No authentication required
 
 ### Production Mode
 
-When `VITE_API_PUBLIC_URL` is set:
+When API URL is configured (`VITE_API_PUBLIC_URL` or `API_PUBLIC_URL`):
 - App authenticates via Telegram WebApp initData
 - Projects loaded from API (`GET /projects/my`)
 - "Create project" calls `POST /projects/create_draft`
@@ -39,7 +46,9 @@ When `VITE_API_PUBLIC_URL` is set:
 2. Set root directory: `services/webapp`
 3. Add environment variable:
    - `VITE_API_PUBLIC_URL` = `https://api.yourdomain.com`
-4. Deploy
+4. Deploy (or Redeploy after env var changes)
+
+> Important: after changing environment variables in Vercel, trigger a new deployment. Existing deployments do not pick up new env values automatically.
 
 ### Required API CORS
 

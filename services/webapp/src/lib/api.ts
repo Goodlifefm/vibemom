@@ -1,59 +1,143 @@
 /**
  * API client for Vibe Market Mini App.
  *
- * When VITE_API_PUBLIC_URL is not set, falls back to demo mode.
+ * Demo mode is enabled only when API URL is not configured.
  */
 
-// API base URL from environment
-const API_BASE = import.meta.env.VITE_API_PUBLIC_URL || '';
+import { getApiBaseUrl } from '../config/api';
 
-// Token storage key
+const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'vibe_market_token';
 
-/**
- * Check if API mode is enabled (VITE_API_PUBLIC_URL is set)
- */
-export function isApiEnabled(): boolean {
-  return !!API_BASE;
+export type ApiErrorKind = 'network' | 'http' | 'cors' | 'unknown';
+
+export interface ApiErrorInfo {
+  kind: ApiErrorKind;
+  status?: number;
+  message: string;
 }
 
 /**
- * Get stored auth token
+ * Check if API mode is enabled.
+ */
+export function isApiEnabled(): boolean {
+  return API_BASE_URL !== null;
+}
+
+/**
+ * Return resolved API base URL used by requests.
+ */
+export function getResolvedApiBaseUrl(): string | null {
+  return API_BASE_URL;
+}
+
+/**
+ * Get stored auth token.
  */
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
 /**
- * Store auth token
+ * Store auth token.
  */
 export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
 /**
- * Clear auth token
+ * Clear auth token.
  */
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
 /**
- * API error class
+ * API error class.
  */
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string
-  ) {
-    super(message);
+  readonly kind: ApiErrorKind;
+  readonly status?: number;
+  readonly code: string;
+
+  constructor(params: { kind: ApiErrorKind; message: string; status?: number; code?: string }) {
+    super(params.message);
     this.name = 'ApiError';
+    this.kind = params.kind;
+    this.status = params.status;
+    this.code = params.code || 'API_ERROR';
   }
 }
 
 /**
- * Request options
+ * Convert unknown errors into safe diagnostics object.
+ */
+export function getApiErrorInfo(error: unknown): ApiErrorInfo {
+  if (error instanceof ApiError) {
+    return {
+      kind: error.kind,
+      status: error.status,
+      message: error.message,
+    };
+  }
+  if (error instanceof Error) {
+    return {
+      kind: 'unknown',
+      message: error.message,
+    };
+  }
+  return {
+    kind: 'unknown',
+    message: 'Unknown error',
+  };
+}
+
+function isCrossOriginUrl(requestUrl: string): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    const targetOrigin = new URL(requestUrl).origin;
+    return targetOrigin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function classifyFetchError(error: unknown, requestUrl: string): ApiError {
+  if (error instanceof ApiError) {
+    return error;
+  }
+
+  if (error instanceof TypeError) {
+    const message = error.message || 'Request failed';
+    const failedToFetch = message.toLowerCase().includes('failed to fetch');
+    const likelyCors = failedToFetch && isCrossOriginUrl(requestUrl);
+
+    return new ApiError({
+      kind: likelyCors ? 'cors' : 'network',
+      code: likelyCors ? 'CORS_OR_NETWORK' : 'NETWORK_ERROR',
+      message: message,
+    });
+  }
+
+  if (error instanceof Error) {
+    return new ApiError({
+      kind: 'unknown',
+      code: 'UNKNOWN_ERROR',
+      message: error.message,
+    });
+  }
+
+  return new ApiError({
+    kind: 'unknown',
+    code: 'UNKNOWN_ERROR',
+    message: 'Unknown error',
+  });
+}
+
+/**
+ * Request options.
  */
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -63,31 +147,33 @@ interface RequestOptions {
 }
 
 /**
- * Make an API request
+ * Make an API request.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  if (!API_BASE) {
-    throw new ApiError(0, 'API_NOT_CONFIGURED', 'API URL is not configured');
+  if (!API_BASE_URL) {
+    throw new ApiError({
+      kind: 'unknown',
+      code: 'API_NOT_CONFIGURED',
+      message: 'API URL is not configured',
+    });
   }
 
   const { method = 'GET', body, headers = {}, skipAuth = false } = options;
 
-  // Build headers
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     ...headers,
   };
 
-  // Add auth token if available and not skipped
   if (!skipAuth) {
     const token = getToken();
     if (token) {
-      requestHeaders['Authorization'] = `Bearer ${token}`;
+      requestHeaders.Authorization = `Bearer ${token}`;
     }
   }
 
-  // Build request
-  const url = `${API_BASE}${path}`;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${API_BASE_URL}${normalizedPath}`;
   const init: RequestInit = {
     method,
     headers: requestHeaders,
@@ -97,30 +183,43 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     init.body = JSON.stringify(body);
   }
 
-  // Make request
-  const response = await fetch(url, init);
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    throw classifyFetchError(error, url);
+  }
 
-  // Handle response
   if (!response.ok) {
     let errorData: { detail?: string; code?: string } = {};
     try {
-      errorData = await response.json();
+      errorData = (await response.json()) as { detail?: string; code?: string };
     } catch {
-      // Response may not be JSON
+      errorData = {};
     }
-    throw new ApiError(
-      response.status,
-      errorData.code || `HTTP_${response.status}`,
-      errorData.detail || `Request failed with status ${response.status}`
-    );
+
+    throw new ApiError({
+      kind: 'http',
+      status: response.status,
+      code: errorData.code || `HTTP_${response.status}`,
+      message: errorData.detail || `Request failed with status ${response.status}`,
+    });
   }
 
-  // Parse response (handle empty responses)
   const text = await response.text();
   if (!text) {
     return {} as T;
   }
-  return JSON.parse(text) as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError({
+      kind: 'unknown',
+      code: 'INVALID_JSON',
+      message: 'Invalid JSON response',
+    });
+  }
 }
 
 // =============================================================================
@@ -140,7 +239,7 @@ interface AuthResponse {
 }
 
 /**
- * Authenticate with Telegram initData
+ * Authenticate with Telegram initData.
  */
 export async function authenticate(initData: string): Promise<AuthResponse> {
   const response = await request<AuthResponse>('/auth/telegram', {
@@ -149,9 +248,7 @@ export async function authenticate(initData: string): Promise<AuthResponse> {
     skipAuth: true,
   });
 
-  // Store token
   setToken(response.access_token);
-
   return response;
 }
 
@@ -211,14 +308,14 @@ export interface ProjectDetails {
 }
 
 /**
- * Get current user's projects
+ * Get current user's projects.
  */
 export async function getProjects(): Promise<Project[]> {
   return request<Project[]>('/projects/my');
 }
 
 /**
- * Create a new draft project
+ * Create a new draft project.
  */
 export async function createDraft(): Promise<ProjectDetails> {
   return request<ProjectDetails>('/projects/create_draft', {
@@ -227,8 +324,9 @@ export async function createDraft(): Promise<ProjectDetails> {
 }
 
 /**
- * Get project details by ID
+ * Get project details by ID.
  */
 export async function getProject(id: string): Promise<ProjectDetails> {
   return request<ProjectDetails>(`/projects/${id}`);
 }
+
