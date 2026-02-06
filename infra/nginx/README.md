@@ -80,9 +80,14 @@ curl -I https://api.<DOMAIN>/healthz
 
 | File | Purpose |
 |------|---------|
-| `nginx.conf` | Main Nginx configuration with HTTPS |
+| `conf.d/api.conf` | Main Nginx configuration with HTTPS (loaded by nginx) |
+| `conf.d/api-http-only.conf.bak` | HTTP-only config for initial cert setup (NOT loaded — `.bak` extension) |
+| `nginx.conf` | Standalone config (reference only, not mounted in prod) |
 | `../certbot/www/` | ACME challenge directory |
 | `../certbot/conf/` | Let's Encrypt certificates |
+
+> **IMPORTANT:** Only ONE `.conf` file should exist in `conf.d/` at a time.
+> Nginx loads ALL `*.conf` files, and duplicates cause startup failure.
 
 ## Certificate Renewal
 
