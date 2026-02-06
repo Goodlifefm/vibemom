@@ -27,8 +27,8 @@ Internet (HTTPS)
 Edit `nginx.conf` and replace all `<DOMAIN>` with your actual domain:
 
 ```bash
-# Example: replace <DOMAIN> with vibemom.com
-sed -i 's/<DOMAIN>/vibemom.com/g' infra/nginx/nginx.conf
+# Example: replace <DOMAIN> with vibemom.ru
+sed -i 's/<DOMAIN>/vibemom.ru/g' infra/nginx/nginx.conf
 ```
 
 ### 2. Configure DNS
