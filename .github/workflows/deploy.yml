@@ -108,6 +108,10 @@ jobs:
               docker compose up -d --force-recreate db bot api
             fi
 
+            # Nginx resolves upstream names on startup (Docker service IPs can change after recreate).
+            # Restart nginx (if present) to refresh upstream DNS and avoid transient 502s.
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx 2>/dev/null || true
+
             # Wait for services to stabilize
             sleep 5
 
