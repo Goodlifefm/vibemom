@@ -23,9 +23,9 @@ API_JWT_SECRET=<длинная случайная строка 32+ символ�
 
 # === РЕКОМЕНДУЕМЫЕ (для production) ===
 APP_ENV=production
-WEBAPP_URL=https://<vercel-app>.vercel.app
+WEBAPP_URL=https://vibemom.ru
 API_PUBLIC_URL=https://api.vibemom.ru
-ALLOWED_ORIGINS=https://<vercel-app>.vercel.app,https://web.telegram.org,https://t.me
+ALLOWED_ORIGINS=https://vibemom.ru,https://www.vibemom.ru,https://web.telegram.org,https://t.me
 
 # === ОПЦИОНАЛЬНО ===
 LOG_LEVEL=INFO
@@ -88,7 +88,7 @@ curl https://api.vibemom.ru/version
 # Ожидается: {"version":"1.0.0","env":"production","webapp_url":"https://...","api_public_url":"https://..."}
 
 # 4. CORS headers (должен быть Access-Control-Allow-Origin)
-curl -I -H "Origin: https://web.telegram.org" https://api.vibemom.ru/healthz
+curl -I -H "Origin: https://vibemom.ru" https://api.vibemom.ru/healthz
 
 # 5. Проверить env в контейнере
 docker compose exec api printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL|ALLOWED_ORIGINS|APP_ENV)"
@@ -112,6 +112,8 @@ docker compose exec api printenv | grep -E "(WEBAPP_URL|API_PUBLIC_URL|ALLOWED_O
 
 **Regex patterns (auto-matched):**
 - `https://*.vercel.app`
+- `https://vibemom.ru`
+- `https://www.vibemom.ru`
 - `https://app.vibemom.ru`
 
 **From env:**

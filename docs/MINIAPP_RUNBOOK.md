@@ -269,11 +269,11 @@ curl https://api.<YOUR_DOMAIN>/version
 ```bash
 # Проверка CORS headers
 curl -I -X OPTIONS https://api.<YOUR_DOMAIN>/projects/my \
-  -H "Origin: https://your-project.vercel.app" \
+  -H "Origin: https://vibemom.ru" \
   -H "Access-Control-Request-Method: GET"
 
 # Должен содержать:
-# Access-Control-Allow-Origin: https://your-project.vercel.app
+# Access-Control-Allow-Origin: https://vibemom.ru
 # Access-Control-Allow-Credentials: true
 ```
 

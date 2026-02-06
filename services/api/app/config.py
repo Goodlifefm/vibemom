@@ -5,6 +5,7 @@ All settings are loaded from environment variables.
 """
 
 from functools import lru_cache
+from urllib.parse import urlparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
         Auto-includes:
         - Origins from ALLOWED_ORIGINS, API_CORS_ORIGINS or WEBAPP_ORIGINS (comma-separated)
         - WEBAPP_URL (normalized to scheme+host)
+        - First-party domains: vibemom.ru, www.vibemom.ru, app.vibemom.ru
         - Dev origins: http://localhost:5173, http://127.0.0.1:5173
         - Telegram origins: https://web.telegram.org, https://t.me
         """
@@ -86,10 +88,14 @@ class Settings(BaseSettings):
             webapp = self.webapp_url.strip().rstrip("/")
             if webapp:
                 # Extract scheme+host (remove path if any)
-                from urllib.parse import urlparse
                 parsed = urlparse(webapp)
                 if parsed.scheme and parsed.netloc:
                     origins.add(f"{parsed.scheme}://{parsed.netloc}")
+
+        # Always allow first-party production webapp domains
+        origins.add("https://vibemom.ru")
+        origins.add("https://www.vibemom.ru")
+        origins.add("https://app.vibemom.ru")
         
         # Always add dev origins for local development
         origins.add("http://localhost:5173")
@@ -99,7 +105,7 @@ class Settings(BaseSettings):
         origins.add("https://web.telegram.org")
         origins.add("https://t.me")
         
-        return list(origins)
+        return sorted(origins)
 
     def get_cors_origin_regex(self) -> str | None:
         """
@@ -107,10 +113,10 @@ class Settings(BaseSettings):
         
         Supports:
         - *.vercel.app (any Vercel deployment)
-        - app.vibemom.ru (future production domain)
+        - vibemom.ru and its subdomains (production domains)
         """
-        # Regex для Vercel deployments и будущего продакшн домена
-        return r"https://.*\.vercel\.app|https://app\.vibemom\.ru"
+        # Regex for dynamic Vercel previews and first-party vibemom domains.
+        return r"^https://([a-z0-9-]+\.)?vercel\.app$|^https://([a-z0-9-]+\.)?vibemom\.ru$"
 
     @property
     def is_production(self) -> bool:

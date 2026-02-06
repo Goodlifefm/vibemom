@@ -67,9 +67,9 @@ app = FastAPI(
 # =============================================================================
 # CORS Configuration
 # =============================================================================
-# Поддержка:
-# - Явные origins из env (ALLOWED_ORIGINS, WEBAPP_URL, etc.)
-# - Regex для *.vercel.app и app.vibemom.ru
+# Supports:
+# - Explicit origins from env (ALLOWED_ORIGINS, WEBAPP_URL, etc.)
+# - Regex for *.vercel.app and vibemom.ru subdomains
 # - Dev origins (localhost:5173)
 # - Telegram origins (web.telegram.org, t.me)
 
@@ -77,14 +77,14 @@ settings = get_settings()
 cors_origins = settings.get_cors_origins()
 cors_origin_regex = settings.get_cors_origin_regex()
 
-# Добавляем CORS middleware
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-TG-INIT-DATA", "Authorization"],
+    allow_headers=["Content-Type", "X-TG-INIT-DATA", "Authorization", "X-Requested-With"],
     expose_headers=["X-API-Version"],
 )
 logger.info(f"CORS enabled for origins: {cors_origins}")
@@ -143,9 +143,17 @@ async def cors_diagnostic_logging(request: Request, call_next):
         except Exception:
             pass
     
-    # Log for non-health endpoints to avoid noise
-    if path not in ["/healthz", "/", "/docs", "/openapi.json"]:
-        logger.debug(f"CORS: origin={origin} method={method} path={path} user_id={user_id}")
+    # Log cross-origin traffic for non-health endpoints.
+    if origin != "-" and path not in ["/healthz", "/", "/docs", "/openapi.json"]:
+        if method == "OPTIONS":
+            acr_method = request.headers.get("access-control-request-method", "-")
+            acr_headers = request.headers.get("access-control-request-headers", "-")
+            logger.info(
+                f"CORS preflight: origin={origin} path={path} "
+                f"request_method={acr_method} request_headers={acr_headers}"
+            )
+        else:
+            logger.debug(f"CORS: origin={origin} method={method} path={path} user_id={user_id}")
     
     response = await call_next(request)
     return response
