@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './index.css';
+import { InitDiagnosticsScreen } from './components/InitDiagnosticsScreen';
 import { getApiBaseUrl } from './config/api';
 import {
   ApiError,
@@ -14,6 +15,8 @@ import {
 } from './lib/api';
 
 type ProjectStatus = 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
+
+const BOOT_WATCHDOG_TIMEOUT_MS = 2800;
 
 const DEMO_PROJECTS: Project[] = [
   {
@@ -143,6 +146,76 @@ function ApiUnavailablePanel({
   errorInfo: ApiErrorInfo;
   onRetry: () => void;
 }) {
+  const [echoOriginResult, setEchoOriginResult] = useState<string | null>(null);
+  const [echoOriginIsError, setEchoOriginIsError] = useState(false);
+  const [echoOriginLoading, setEchoOriginLoading] = useState(false);
+
+  const formatEchoOriginResponse = useCallback((text: string): string => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+
+      const redact = (value: unknown): unknown => {
+        if (Array.isArray(value)) {
+          return value.map((item) => redact(item));
+        }
+        if (value && typeof value === 'object') {
+          const obj = value as Record<string, unknown>;
+          const out: Record<string, unknown> = {};
+
+          for (const [key, nested] of Object.entries(obj)) {
+            const lower = key.toLowerCase();
+            if (lower === 'initdata' || lower === 'authorization' || lower === 'cookie' || lower === 'cookies') {
+              out[key] = '[redacted]';
+              continue;
+            }
+            out[key] = redact(nested);
+          }
+
+          return out;
+        }
+        return value;
+      };
+
+      return JSON.stringify(redact(parsed), null, 2);
+    } catch {
+      return text;
+    }
+  }, []);
+
+  const handleEchoOrigin = useCallback(async () => {
+    if (echoOriginLoading) {
+      return;
+    }
+
+    setEchoOriginLoading(true);
+    setEchoOriginResult(null);
+    setEchoOriginIsError(false);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/debug/echo`, {
+        method: 'GET',
+        // Never include cookies or authorization for this diagnostic call.
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+
+      const text = await response.text();
+      setEchoOriginResult(formatEchoOriginResponse(text));
+      setEchoOriginIsError(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setEchoOriginResult(message);
+      setEchoOriginIsError(true);
+    } finally {
+      setEchoOriginLoading(false);
+    }
+  }, [apiBaseUrl, echoOriginLoading, formatEchoOriginResponse]);
+
   return (
     <div className="error api-unavailable">
       <p>API недоступен. Попробуйте ещё раз.</p>
@@ -168,6 +241,19 @@ function ApiUnavailablePanel({
             <span className="diagnostics-key">error.message</span>
             <span className="diagnostics-value">{errorInfo.message}</span>
           </div>
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">debug.echo</span>
+            <div className="diagnostics-value diagnostics-echo">
+              <button className="btn btn-secondary diagnostics-btn" onClick={handleEchoOrigin} disabled={echoOriginLoading}>
+                Echo origin
+              </button>
+              {echoOriginResult !== null && (
+                <pre className={`diagnostics-echo-output${echoOriginIsError ? ' diagnostics-echo-output-error' : ''}`}>
+                  {echoOriginResult}
+                </pre>
+              )}
+            </div>
+          </div>
         </div>
       </details>
     </div>
@@ -189,10 +275,34 @@ function App() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initAttempt, setInitAttempt] = useState(0);
+  const [bootCompleted, setBootCompleted] = useState(false);
+  const [bootWatchdogFired, setBootWatchdogFired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [apiUnavailable, setApiUnavailable] = useState<ApiErrorInfo | null>(null);
+
+  useEffect(() => {
+    if (!loading) {
+      setBootCompleted(true);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    if (bootCompleted || !loading) {
+      setBootWatchdogFired(false);
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setBootWatchdogFired(true);
+    }, BOOT_WATCHDOG_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [bootCompleted, initAttempt, loading]);
 
   const handleApiFailure = useCallback((err: unknown, fallbackMessage: string) => {
     const info = getApiErrorInfo(err);
@@ -222,6 +332,9 @@ function App() {
   }, []);
 
   const loadProjects = useCallback(async () => {
+    setInitAttempt((value) => value + 1);
+    setBootWatchdogFired(false);
+
     if (isDemo) {
       setProjects(DEMO_PROJECTS);
       setApiUnavailable(null);
@@ -333,7 +446,11 @@ function App() {
           <h2 className="section-title">Мои проекты</h2>
 
           {loading ? (
-            <LoadingSpinner />
+            bootWatchdogFired ? (
+              <InitDiagnosticsScreen apiBaseUrl={import.meta.env.VITE_API_PUBLIC_URL || ''} onRetry={loadProjects} />
+            ) : (
+              <LoadingSpinner />
+            )
           ) : apiUnavailable && apiBaseUrl ? (
             <ApiUnavailablePanel apiBaseUrl={apiBaseUrl} errorInfo={apiUnavailable} onRetry={loadProjects} />
           ) : error ? (
@@ -354,4 +471,3 @@ function App() {
 }
 
 export default App;
-
