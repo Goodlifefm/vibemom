@@ -156,7 +156,11 @@ async def cors_diagnostic_logging(request: Request, call_next):
                 f"request_method={acr_method} request_headers={acr_headers}"
             )
         else:
-            logger.debug(f"CORS: origin={origin} method={method} path={path} user_id={user_id}")
+            # Log key endpoints at INFO so we can confirm real WebView traffic in production logs.
+            if path in ['/projects/my', '/auth/telegram']:
+                logger.info(f"CORS: origin={origin} method={method} path={path} user_id={user_id}")
+            else:
+                logger.debug(f"CORS: origin={origin} method={method} path={path} user_id={user_id}")
     
     response = await call_next(request)
     return response
