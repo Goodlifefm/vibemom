@@ -10,8 +10,6 @@ Endpoints:
 
 from typing import Annotated
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,32 +31,32 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
     description="Get list of all projects for the current user.",
 )
 async def get_my_projects(
-    # DEBUG-ONLY: temporarily disable auth to diagnose Telegram WebView fetch failures.
-    # Revert after confirming.
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ProjectListItemDTO]:
-    now = datetime.now(timezone.utc)
-    return [
-        ProjectListItemDTO(
-            id="debug-no-auth",
-            status="draft",
-            revision=0,
-            title_short="DEBUG: /projects/my no-auth",
-            completion_percent=0,
-            next_action={"action": "view", "label": "no-auth", "cta_enabled": False},
-            can_edit=False,
-            can_submit=False,
-            can_archive=False,
-            can_delete=False,
-            created_at=now,
-            updated_at=now,
-            submitted_at=None,
-            has_fix_request=False,
-            fix_request_preview=None,
-            current_step=None,
-            missing_fields=[],
-        )
-    ]
+    """
+    Get all projects (submissions) for the current authenticated user.
+
+    Returns list of ProjectListItemDTO with:
+    - Basic info: id, status, revision
+    - Progress: completion_percent, missing_fields
+    - Action hints: next_action, can_* flags
+    - Timestamps and moderation info
+    """
+    if current_user.db_id is None:
+        # User doesn't exist in DB yet, no projects
+        return []
+
+    service = ProjectsService(session)
+    projects = await service.get_user_projects(current_user.db_id)
+
+    logger.debug(
+        f"Retrieved {len(projects)} projects for user",
+        extra={"telegram_id": current_user.telegram_id}
+    )
+
+    return projects
+
 
 @router.post(
     "/create_draft",
