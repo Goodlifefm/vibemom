@@ -429,3 +429,458 @@ html, body {
   cursor: not-allowed;
   transform: none;
 }
+
+/* ==========================================================================
+   Clickable project card
+   ========================================================================== */
+
+.card-clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  /* Visible tap highlight in Telegram WebView */
+  -webkit-tap-highlight-color: rgba(36, 129, 204, 0.15);
+  /* Prevent text selection on tap */
+  user-select: none;
+  -webkit-user-select: none;
+  /* Remove 300ms tap delay in mobile browsers */
+  touch-action: manipulation;
+  position: relative;
+}
+
+.card-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Minimal ripple/flash feedback on tap (no JS, works in Telegram WebView) */
+.card-clickable::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(36, 129, 204, 0.20), rgba(36, 129, 204, 0) 55%);
+  transform: scale(0.98);
+}
+
+.card-clickable:active::after {
+  opacity: 1;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  transform: scale(1);
+}
+
+.card-clickable:hover {
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-clickable:active {
+  transform: scale(0.98);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  border-color: var(--accent-color);
+}
+
+.card-clickable:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Card footer with action button + chevron */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.card-open-btn {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent-color);
+}
+
+.card-chevron {
+  color: var(--accent-color);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.card-clickable:hover .card-chevron {
+  transform: translateX(2px);
+}
+
+/* ==========================================================================
+   Toast notification (debug feedback for WebView)
+   ========================================================================== */
+
+.toast {
+  position: fixed;
+  bottom: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 9999;
+  pointer-events: auto;
+  animation: toast-in 0.25s ease-out;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  max-width: 90vw;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ==========================================================================
+   Detail screen
+   ========================================================================== */
+
+.detail-screen {
+  padding-bottom: 2rem;
+}
+
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.75rem 0;
+  font-family: inherit;
+  -webkit-tap-highlight-color: rgba(36, 129, 204, 0.15);
+  touch-action: manipulation;
+}
+
+.btn-back:active {
+  opacity: 0.7;
+}
+
+.detail-card {
+  margin-top: 1rem;
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color);
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.detail-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-color);
+  flex: 1;
+}
+
+.detail-progress {
+  margin-bottom: 1rem;
+}
+
+.detail-section {
+  margin-top: 1.25rem;
+}
+
+.detail-section-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.detail-missing-list {
+  list-style: none;
+  padding: 0;
+}
+
+.detail-missing-list li {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  padding: 0.25rem 0;
+}
+
+.detail-missing-list li::before {
+  content: '• ';
+  color: var(--accent-color);
+}
+
+.detail-preview-html {
+  font-size: 0.875rem;
+  color: var(--text-color);
+  line-height: 1.6;
+  padding: 0.75rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 400px;
+}
+
+.detail-meta {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.detail-meta-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.detail-meta-key {
+  color: var(--text-muted);
+}
+
+.detail-meta-value {
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   Telegram WebView safe zones
+   ========================================================================== */
+
+/* Ensure nothing blocks card clicks — no overlapping z-index layers */
+.projects {
+  position: relative;
+  z-index: 1;
+}
+
+/* The create button uses normal flow, not fixed positioning,
+   so it cannot overlap/block card clicks */
+.btn-full {
+  position: relative;
+  z-index: 1;
+}
+
+/* ==========================================================================
+   Build stamp + Self-test
+   ========================================================================== */
+
+.build-stamp {
+  margin-top: 1rem;
+  padding: 0.5rem 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  user-select: text;
+}
+
+.build-stamp-btn {
+  margin-left: 0.45rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  color: var(--text-muted);
+  border-radius: 999px;
+  width: 1.6rem;
+  height: 1.6rem;
+  line-height: 1.4rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.build-stamp-btn:active {
+  transform: translateY(0.5px);
+}
+
+.build-stamp-sep {
+  opacity: 0.65;
+  padding: 0 0.25rem;
+}
+
+/* When self-test is enabled, keep room for the fixed bottom panel. */
+.selftest-enabled .main {
+  padding-bottom: 7.5rem;
+}
+
+.selftest-panel-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
+  pointer-events: none;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.selftest-panel {
+  pointer-events: auto;
+  max-width: 600px;
+  margin: 0 auto;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  .selftest-panel {
+    background-color: rgba(26, 26, 26, 0.92);
+  }
+}
+
+.selftest-panel-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.selftest-panel-toggle,
+.selftest-panel-close {
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border-radius: 10px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.selftest-panel-meta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.selftest-panel-meta-muted {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selftest-panel-meta-sep {
+  opacity: 0.6;
+}
+
+.selftest-panel-body {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.selftest-panel-info {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.selftest-panel-info-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.selftest-k {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.selftest-v {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.selftest-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.selftest-panel-ack {
+  border: 1px solid #34c759;
+  background: rgba(52, 199, 89, 0.1);
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.selftest-panel-error {
+  border: 1px solid #ff3b30;
+  background: rgba(255, 59, 48, 0.08);
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.selftest-panel-details {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--card-bg);
+}
+
+.selftest-panel-details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.selftest-panel-pre {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow: auto;
+}

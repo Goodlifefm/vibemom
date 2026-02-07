@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 API_DOMAIN="api.vibemom.ru"
-WEBAPP_URL="${WEBAPP_URL:-https://vibemom.ru}"  # Override with env if needed
+WEBAPP_URL="${WEBAPP_URL:-https://app.vibemom.ru}"  # Override with env if needed
 PROJECT_DIR="/root/vibemom"
 EMAIL="${CERT_EMAIL:-admin@vibemom.ru}"
 

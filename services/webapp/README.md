@@ -60,6 +60,20 @@ ALLOWED_ORIGINS=https://your-app.vercel.app,https://web.telegram.org,https://t.m
 WEBAPP_URL=https://your-app.vercel.app
 ```
 
+## Verify Production Build (No Vercel UI)
+
+After a deployment, you can confirm which build is serving `app.vibemom.ru` via a static build stamp endpoint:
+
+```bash
+curl -s https://app.vibemom.ru/build.json
+```
+
+Expected shape:
+
+```json
+{ "git_sha": "<sha>", "build_time": "<iso>", "env": "<production|preview>" }
+```
+
 ## Scripts
 
 - `npm run dev` — Start dev server

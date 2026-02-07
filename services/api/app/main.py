@@ -166,6 +166,39 @@ async def cors_diagnostic_logging(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def selected_request_logging(request: Request, call_next):
+    """Log method/path/origin/status_code for key endpoints used by the Mini App."""
+    response = await call_next(request)
+
+    path = request.url.path
+    origin = request.headers.get("origin", "-")
+
+    is_projects_my = path == "/projects/my"
+    is_project_detail = (
+        path.startswith("/projects/")
+        and path != "/projects/my"
+        and not path.endswith("/preview")
+        and path.count("/") == 2
+    )
+    is_client_log = path == "/debug/client-log"
+
+    if is_projects_my or is_project_detail or is_client_log:
+        logger.info(
+            "Request",
+            extra={
+                "extra": {
+                    "method": request.method,
+                    "path": path,
+                    "origin": origin,
+                    "status_code": response.status_code,
+                }
+            },
+        )
+
+    return response
+
+
 # =============================================================================
 # Include Routers
 # =============================================================================

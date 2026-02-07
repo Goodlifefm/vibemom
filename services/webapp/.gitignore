@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Build stamp endpoint (generated at build time)
+public/build.json
+
 # Local env files
 .env.local
 .env.*.local

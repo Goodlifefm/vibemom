@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getBuildStamp } from '../lib/buildStamp';
+import { trackedFetch } from '../lib/fetcher';
 
 const USER_AGENT_MAX_LEN = 160;
 const DEBUG_ECHO_TIMEOUT_MS = 1800;
@@ -85,6 +87,7 @@ export function InitDiagnosticsScreen({
   apiBaseUrl: string;
   onRetry?: () => void;
 }) {
+  const build = useMemo(() => getBuildStamp(), []);
   const userAgent = useMemo(() => truncate(navigator.userAgent ?? '', USER_AGENT_MAX_LEN), []);
   const origin = useMemo(() => document.location.origin, []);
 
@@ -93,12 +96,23 @@ export function InitDiagnosticsScreen({
     () => Boolean((window as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp),
     [],
   );
+  const isTelegramWebView = hasTelegramWebApp;
 
   const apiBaseUrlTrimmed = useMemo(() => apiBaseUrl.trim(), [apiBaseUrl]);
   const apiBaseUrlForFetch = useMemo(
     () => (apiBaseUrlTrimmed ? normalizeApiBaseUrl(apiBaseUrlTrimmed) : ''),
     [apiBaseUrlTrimmed],
   );
+  const resolvedApiOrigin = useMemo(() => {
+    if (!apiBaseUrlForFetch) {
+      return '';
+    }
+    try {
+      return new URL(apiBaseUrlForFetch).origin;
+    } catch {
+      return '';
+    }
+  }, [apiBaseUrlForFetch]);
 
   const [echo, setEcho] = useState<DebugEchoResult>({ status: 'idle' });
   const [copyStatus, setCopyStatus] = useState<'idle' | 'ok' | 'error'>('idle');
@@ -116,7 +130,7 @@ export function InitDiagnosticsScreen({
 
     (async () => {
       try {
-        const response = await fetch(`${apiBaseUrlForFetch}/debug/echo`, {
+        const response = await trackedFetch(`${apiBaseUrlForFetch}/debug/echo`, {
           method: 'GET',
           // Never include cookies or authorization for this diagnostic call.
           credentials: 'omit',
@@ -146,11 +160,14 @@ export function InitDiagnosticsScreen({
 
   const diagnosticsJson = useMemo(() => {
     const payload: Record<string, unknown> = {
+      build,
       userAgent,
       hasTelegram,
       hasTelegramWebApp,
+      isTelegramWebView,
       origin,
       apiBaseUrl,
+      resolvedApiOrigin,
       debugEcho:
         echo.status === 'success'
           ? { ok: true, status: echo.httpStatus, body: echo.body }
@@ -160,7 +177,7 @@ export function InitDiagnosticsScreen({
     };
 
     return JSON.stringify(payload, null, 2);
-  }, [apiBaseUrl, echo, hasTelegram, hasTelegramWebApp, origin, userAgent]);
+  }, [apiBaseUrl, build, echo, hasTelegram, hasTelegramWebApp, isTelegramWebView, origin, resolvedApiOrigin, userAgent]);
 
   const handleCopy = useCallback(async () => {
     setCopyStatus('idle');
@@ -168,6 +185,12 @@ export function InitDiagnosticsScreen({
     setCopyStatus(ok ? 'ok' : 'error');
     window.setTimeout(() => setCopyStatus('idle'), 2000);
   }, [diagnosticsJson]);
+
+  const handleOpenSelfTest = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('selftest', '1');
+    window.location.href = url.toString();
+  }, []);
 
   return (
     <div className="error init-diagnostics">
@@ -184,6 +207,9 @@ export function InitDiagnosticsScreen({
             Retry
           </button>
         )}
+        <button className="btn btn-secondary" onClick={handleOpenSelfTest}>
+          Open self-test
+        </button>
         <button className="btn btn-primary" onClick={handleCopy}>
           Copy diagnostics
         </button>
@@ -197,6 +223,12 @@ export function InitDiagnosticsScreen({
       <div className="diagnostics-panel">
         <div className="diagnostics-content">
           <div className="diagnostics-row">
+            <span className="diagnostics-key">build</span>
+            <span className="diagnostics-value">
+              {build.shortSha} <span className="build-stamp-sep">·</span> {build.buildTime}
+            </span>
+          </div>
+          <div className="diagnostics-row">
             <span className="diagnostics-key">userAgent</span>
             <span className="diagnostics-value">{userAgent}</span>
           </div>
@@ -209,12 +241,20 @@ export function InitDiagnosticsScreen({
             <span className="diagnostics-value">{hasTelegramWebApp ? 'yes' : 'no'}</span>
           </div>
           <div className="diagnostics-row">
+            <span className="diagnostics-key">isTelegramWebView</span>
+            <span className="diagnostics-value">{isTelegramWebView ? 'true' : 'false'}</span>
+          </div>
+          <div className="diagnostics-row">
             <span className="diagnostics-key">origin</span>
             <span className="diagnostics-value">{origin}</span>
           </div>
           <div className="diagnostics-row">
             <span className="diagnostics-key">apiBaseUrl</span>
             <span className="diagnostics-value">{apiBaseUrl || '-'}</span>
+          </div>
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">resolvedApiOrigin</span>
+            <span className="diagnostics-value">{resolvedApiOrigin || '-'}</span>
           </div>
           <div className="diagnostics-row">
             <span className="diagnostics-key">debug.echo</span>

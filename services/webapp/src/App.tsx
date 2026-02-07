@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './index.css';
 import { InitDiagnosticsScreen } from './components/InitDiagnosticsScreen';
+import { SelfTestPanel } from './components/SelfTestPanel';
 import { getApiBaseUrl } from './config/api';
 import {
   ApiError,
@@ -8,11 +9,17 @@ import {
   authenticate,
   createDraft,
   getApiErrorInfo,
+  getProject,
   getProjects,
   getToken,
   type ApiErrorInfo,
   type Project,
+  type ProjectDetails,
 } from './lib/api';
+import { getBuildStamp } from './lib/buildStamp';
+import { getLastErrors, getLastRequest, installGlobalErrorTracking } from './lib/fetcher';
+import { isSelfTestEnabled } from './lib/selfTest';
+import { installGlobalTapTracking, recordTapFromReactEvent } from './lib/tapTracker';
 
 type ProjectStatus = 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
 
@@ -93,11 +100,49 @@ function isApiUnavailableError(error: ApiErrorInfo): boolean {
   return error.kind === 'http' && typeof error.status === 'number' && error.status >= 500;
 }
 
-function ProjectCard({ project }: { project: Project }) {
-  const statusInfo = STATUS_LABELS[project.status] || STATUS_LABELS.draft;
+function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const timer = window.setTimeout(onDismiss, 3000);
+    return () => window.clearTimeout(timer);
+  }, [onDismiss]);
 
   return (
-    <div className="card">
+    <div className="toast" onClick={onDismiss} role="status">
+      {message}
+    </div>
+  );
+}
+
+function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: string) => void }) {
+  const statusInfo = STATUS_LABELS[project.status] || STATUS_LABELS.draft;
+  const actionLabel = project.next_action?.label || 'Открыть';
+
+  const lastFireRef = useRef(0);
+  const fireOpen = useCallback(
+    (source: string) => {
+      const now = Date.now();
+      // Touch events in mobile WebViews can trigger multiple synthetic events (touchend + click).
+      if (now - lastFireRef.current < 350) {
+        return;
+      }
+      lastFireRef.current = now;
+
+      console.log(
+        `[DEBUG] open project source=${source} id=${project.id}, status=${project.status}, title="${project.title_short || 'Без названия'}"`,
+      );
+      onOpen(project.id);
+    },
+    [onOpen, project.id, project.status, project.title_short],
+  );
+
+  return (
+    <button
+      type="button"
+      className="card card-clickable card-button"
+      onPointerUp={() => fireOpen('pointerup')}
+      onTouchEnd={() => fireOpen('touchend')}
+      onClick={() => fireOpen('click')}
+    >
       <div className="card-header">
         <h3 className="card-title">{project.title_short || 'Без названия'}</h3>
         <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
@@ -108,10 +153,22 @@ function ProjectCard({ project }: { project: Project }) {
         </div>
         <p className="progress-text">{project.completion_percent}% заполнено</p>
         {project.has_fix_request && project.fix_request_preview && (
-          <p className="fix-request">⚠️ {project.fix_request_preview}</p>
+          <p className="fix-request">! {project.fix_request_preview}</p>
         )}
       </div>
-    </div>
+      <div className="card-footer">
+        <span className="card-open-btn">{actionLabel}</span>
+        <svg className="card-chevron" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path
+            d="M7.5 4L13.5 10L7.5 16"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    </button>
   );
 }
 
@@ -124,15 +181,29 @@ function LoadingSpinner() {
   );
 }
 
-function ErrorMessage({ message, onRetry }: { message: string; onRetry?: () => void }) {
+function ErrorMessage({
+  message,
+  details,
+  onRetry,
+}: {
+  message: string;
+  details?: string | null;
+  onRetry?: () => void;
+}) {
   return (
     <div className="error">
-      <p>❌ {message}</p>
+      <p>{message}</p>
       {onRetry && (
         <button className="btn btn-secondary" onClick={onRetry}>
           Retry
         </button>
       )}
+      {details ? (
+        <details className="diagnostics-panel">
+          <summary>Details</summary>
+          <pre className="diagnostics-echo-output">{details}</pre>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -202,6 +273,7 @@ function ApiUnavailablePanel({
         // Never include cookies or authorization for this diagnostic call.
         credentials: 'omit',
         cache: 'no-store',
+        referrerPolicy: 'no-referrer',
       });
 
       const text = await response.text();
@@ -242,6 +314,14 @@ function ApiUnavailablePanel({
             <span className="diagnostics-value">{errorInfo.message}</span>
           </div>
           <div className="diagnostics-row">
+            <span className="diagnostics-key">lastRequest</span>
+            <pre className="diagnostics-echo-output">{JSON.stringify(getLastRequest(), null, 2) || '-'}</pre>
+          </div>
+          <div className="diagnostics-row">
+            <span className="diagnostics-key">lastErrors</span>
+            <pre className="diagnostics-echo-output">{JSON.stringify(getLastErrors().slice(0, 5), null, 2) || '-'}</pre>
+          </div>
+          <div className="diagnostics-row">
             <span className="diagnostics-key">debug.echo</span>
             <div className="diagnostics-value diagnostics-echo">
               <button className="btn btn-secondary diagnostics-btn" onClick={handleEchoOrigin} disabled={echoOriginLoading}>
@@ -263,8 +343,111 @@ function ApiUnavailablePanel({
 function EmptyState() {
   return (
     <div className="empty-state">
-      <p>📂 У вас пока нет проектов</p>
+      <p>У вас пока нет проектов</p>
       <p className="empty-hint">Создайте первый проект, чтобы начать</p>
+    </div>
+  );
+}
+
+function ProjectDetailScreen({
+  details,
+  loading,
+  error,
+  errorDetails,
+  onBack,
+  onRetry,
+}: {
+  details: ProjectDetails | null;
+  loading: boolean;
+  error: string | null;
+  errorDetails: string | null;
+  onBack: () => void;
+  onRetry: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="detail-screen">
+        <button className="btn-back" onClick={onBack}>
+          ← Назад к проектам
+        </button>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error || !details) {
+    return (
+      <div className="detail-screen">
+        <button className="btn-back" onClick={onBack}>
+          ← Назад к проектам
+        </button>
+        <ErrorMessage message={error || 'Проект не найден'} details={errorDetails} onRetry={onRetry} />
+      </div>
+    );
+  }
+
+  const statusInfo = STATUS_LABELS[details.status] || STATUS_LABELS.draft;
+  const rawTitle = details.fields?.['project_title'];
+  const title = typeof rawTitle === 'string' && rawTitle.length > 0 ? rawTitle : 'Без названия';
+
+  return (
+    <div className="detail-screen">
+      <button className="btn-back" onClick={onBack}>
+        ← Назад к проектам
+      </button>
+
+      <div className="detail-card">
+        <div className="detail-header">
+          <h2 className="detail-title">{title}</h2>
+          <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
+        </div>
+
+        <div className="detail-progress">
+          <div className="progress-bar">
+            <div className="progress-bar-fill" style={{ width: `${details.completion_percent}%` }} />
+          </div>
+          <p className="progress-text">{details.completion_percent}% заполнено</p>
+        </div>
+
+        {details.fix_request && <div className="fix-request">! {details.fix_request}</div>}
+
+        {details.missing_fields.length > 0 && (
+          <div className="detail-section">
+            <h3 className="detail-section-title">Незаполненные поля</h3>
+            <ul className="detail-missing-list">
+              {details.missing_fields.map((field) => (
+                <li key={field}>{field}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {details.preview_html && (
+          <div className="detail-section">
+            <h3 className="detail-section-title">Превью</h3>
+            <div className="detail-preview-html" dangerouslySetInnerHTML={{ __html: details.preview_html }} />
+          </div>
+        )}
+
+        <div className="detail-meta">
+          <div className="detail-meta-row">
+            <span className="detail-meta-key">ID</span>
+            <span className="detail-meta-value">{details.id.slice(0, 8)}…</span>
+          </div>
+          <div className="detail-meta-row">
+            <span className="detail-meta-key">Ревизия</span>
+            <span className="detail-meta-value">{details.revision}</span>
+          </div>
+          <div className="detail-meta-row">
+            <span className="detail-meta-key">Создан</span>
+            <span className="detail-meta-value">{new Date(details.created_at).toLocaleString('ru')}</span>
+          </div>
+          <div className="detail-meta-row">
+            <span className="detail-meta-key">Обновлён</span>
+            <span className="detail-meta-value">{new Date(details.updated_at).toLocaleString('ru')}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -272,6 +455,14 @@ function EmptyState() {
 function App() {
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const isDemo = apiBaseUrl === null;
+  const build = useMemo(() => getBuildStamp(), []);
+  const selfTestAutoOpen = useMemo(() => isSelfTestEnabled(), []);
+  const [selfTestVisible, setSelfTestVisible] = useState(selfTestAutoOpen);
+
+  useEffect(() => {
+    installGlobalErrorTracking();
+    installGlobalTapTracking();
+  }, []);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,9 +470,20 @@ function App() {
   const [bootCompleted, setBootCompleted] = useState(false);
   const [bootWatchdogFired, setBootWatchdogFired] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [apiUnavailable, setApiUnavailable] = useState<ApiErrorInfo | null>(null);
+
+  const [screen, setScreen] = useState<'list' | 'detail'>('list');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [projectDetails, setProjectDetails] = useState<ProjectDetails | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailErrorDetails, setDetailErrorDetails] = useState<string | null>(null);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const dismissToast = useCallback(() => setToastMessage(null), []);
 
   useEffect(() => {
     if (!loading) {
@@ -309,10 +511,24 @@ function App() {
     if (isApiUnavailableError(info)) {
       setApiUnavailable(info);
       setError(null);
+      setErrorDetails(null);
       return;
     }
     setApiUnavailable(null);
-    setError(info.message || fallbackMessage);
+    const e = err instanceof Error ? err : new Error(String(err));
+    setError(`Network error: ${e.name} ${e.message || info.message || fallbackMessage}`);
+    setErrorDetails(
+      JSON.stringify(
+        {
+          status: info.status ?? null,
+          message: info.message || fallbackMessage,
+          stack: e.stack ?? null,
+          lastRequest: getLastRequest(),
+        },
+        null,
+        2,
+      ),
+    );
   }, []);
 
   const tryAuth = useCallback(async (): Promise<void> => {
@@ -339,6 +555,7 @@ function App() {
       setProjects(DEMO_PROJECTS);
       setApiUnavailable(null);
       setError(null);
+      setErrorDetails(null);
       setAuthError(null);
       setLoading(false);
       return;
@@ -346,6 +563,7 @@ function App() {
 
     setLoading(true);
     setError(null);
+    setErrorDetails(null);
     setApiUnavailable(null);
 
     try {
@@ -365,6 +583,7 @@ function App() {
           setProjects(retriedData);
           setAuthError(null);
           setError(null);
+          setErrorDetails(null);
           setApiUnavailable(null);
           setLoading(false);
           return;
@@ -373,11 +592,25 @@ function App() {
           if (isApiUnavailableError(retryInfo)) {
             setApiUnavailable(retryInfo);
             setError(null);
+            setErrorDetails(null);
             setAuthError(null);
           } else {
             setApiUnavailable(null);
             setAuthError(retryInfo.message);
-            setError('Не удалось загрузить проекты');
+            const e = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
+            setError(`Network error: ${e.name} ${e.message || retryInfo.message || 'Request failed'}`);
+            setErrorDetails(
+              JSON.stringify(
+                {
+                  status: retryInfo.status ?? null,
+                  message: retryInfo.message || null,
+                  stack: e.stack ?? null,
+                  lastRequest: getLastRequest(),
+                },
+                null,
+                2,
+              ),
+            );
           }
           setProjects([]);
           setLoading(false);
@@ -402,7 +635,7 @@ function App() {
     loadProjects();
   }, [loadProjects]);
 
-  const handleCreateProject = async () => {
+  const handleCreateProject = useCallback(async () => {
     if (isDemo) {
       alert('Создание проекта будет доступно после подключения API');
       return;
@@ -427,45 +660,163 @@ function App() {
     } finally {
       setCreating(false);
     }
-  };
+  }, [apiUnavailable, isDemo, loadProjects]);
+
+  const handleOpenProject = useCallback(
+    async (id: string) => {
+      console.log(`[DEBUG] open project id=${id}`);
+      setToastMessage(`Tap captured: ${id.slice(0, 8)}...`);
+
+      if (isDemo) {
+        return;
+      }
+
+      if (apiUnavailable) {
+        return;
+      }
+
+      setScreen('detail');
+      setSelectedProjectId(id);
+      setDetailLoading(true);
+      setDetailError(null);
+      setDetailErrorDetails(null);
+      setProjectDetails(null);
+
+      try {
+        const details = await getProject(id);
+        setProjectDetails(details);
+        console.log(`[DEBUG] loaded project details id=${id}`, details);
+      } catch (err) {
+        const info = getApiErrorInfo(err);
+        const e = err instanceof Error ? err : new Error(String(err));
+        console.error(`[DEBUG] failed to load project id=${id}`, info);
+        setDetailError(`Network error: ${e.name} ${e.message || info.message || 'Request failed'}`);
+        setDetailErrorDetails(
+          JSON.stringify(
+            {
+              status: info.status ?? null,
+              message: info.message || null,
+              stack: e.stack ?? null,
+              lastRequest: getLastRequest(),
+            },
+            null,
+            2,
+          ),
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [apiUnavailable, isDemo],
+  );
+
+  const handleBack = useCallback(() => {
+    setScreen('list');
+    setSelectedProjectId(null);
+    setProjectDetails(null);
+    setDetailError(null);
+    setDetailErrorDetails(null);
+  }, []);
 
   return (
-    <div className="container">
-      {isDemo && <div className="demo-banner">⚠️ DEMO MODE — API не подключён, данные тестовые</div>}
+    <div className={`container${selfTestVisible ? ' selftest-enabled' : ''}`}>
+      {toastMessage && <Toast message={toastMessage} onDismiss={dismissToast} />}
 
-      <header className="header">
-        <h1 className="header-title">Мои проекты</h1>
-        <p className="header-subtitle">
-          {isDemo ? 'Подключите API для работы с реальными данными' : 'Управление проектами'}
-        </p>
-        {authError && <p className="auth-error">{authError}</p>}
-      </header>
+      {screen === 'detail' ? (
+        <ProjectDetailScreen
+          details={projectDetails}
+          loading={detailLoading}
+          error={detailError}
+          errorDetails={detailErrorDetails}
+          onBack={handleBack}
+          onRetry={() => selectedProjectId && handleOpenProject(selectedProjectId)}
+        />
+      ) : (
+        <>
+          <header className="header">
+            <h1 className="header-title">Мои проекты</h1>
+            <p className="header-subtitle">{isDemo ? 'Подключите API для работы с реальными данными' : 'Управление проектами'}</p>
+            {authError && <p className="auth-error">{authError}</p>}
+          </header>
 
-      <main className="main">
-        <section className="projects">
-          <h2 className="section-title">Мои проекты</h2>
+          <main className="main">
+            <section className="projects">
+              <h2 className="section-title">Мои проекты</h2>
 
-          {loading ? (
-            bootWatchdogFired ? (
-              <InitDiagnosticsScreen apiBaseUrl={import.meta.env.VITE_API_PUBLIC_URL || ''} onRetry={loadProjects} />
-            ) : (
-              <LoadingSpinner />
-            )
-          ) : apiUnavailable && apiBaseUrl ? (
-            <ApiUnavailablePanel apiBaseUrl={apiBaseUrl} errorInfo={apiUnavailable} onRetry={loadProjects} />
-          ) : error ? (
-            <ErrorMessage message={error} onRetry={loadProjects} />
-          ) : projects.length === 0 ? (
-            <EmptyState />
-          ) : (
-            projects.map((project) => <ProjectCard key={project.id} project={project} />)
-          )}
-        </section>
+              {loading ? (
+                bootWatchdogFired ? (
+                  <InitDiagnosticsScreen apiBaseUrl={import.meta.env.VITE_API_PUBLIC_URL || ''} onRetry={loadProjects} />
+                ) : (
+                  <LoadingSpinner />
+                )
+              ) : apiUnavailable && apiBaseUrl ? (
+                <ApiUnavailablePanel apiBaseUrl={apiBaseUrl} errorInfo={apiUnavailable} onRetry={loadProjects} />
+              ) : error ? (
+                <ErrorMessage message={error} details={errorDetails} onRetry={loadProjects} />
+              ) : projects.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <div
+                  className="projects-list"
+                  onPointerDownCapture={(e) => {
+                    recordTapFromReactEvent('pointerdown', (e as any).nativeEvent);
+                    const t = e.target as HTMLElement | null;
+                    console.log(
+                      `[DEBUG] pointerdown capture target=${t?.tagName?.toLowerCase() || '-'} class=${String((t as any)?.className || '-')} x=${(e as any).clientX ?? '-'} y=${(e as any).clientY ?? '-'}`,
+                    );
+                  }}
+                  onClickCapture={(e) => {
+                    recordTapFromReactEvent('click', (e as any).nativeEvent);
+                    const t = e.target as HTMLElement | null;
+                    console.log(
+                      `[DEBUG] click capture target=${t?.tagName?.toLowerCase() || '-'} class=${String((t as any)?.className || '-')} x=${(e as any).clientX ?? '-'} y=${(e as any).clientY ?? '-'}`,
+                    );
+                  }}
+                  onTouchEndCapture={(e) => {
+                    const native = (e as any).nativeEvent as TouchEvent | undefined;
+                    const touch = native?.changedTouches?.[0];
+                    recordTapFromReactEvent('touchend', {
+                      clientX: touch?.clientX,
+                      clientY: touch?.clientY,
+                      target: (e as any).target,
+                    });
+                    const t = e.target as HTMLElement | null;
+                    console.log(`[DEBUG] touchend capture target=${t?.tagName?.toLowerCase() || '-'} class=${String((t as any)?.className || '-')}`);
+                  }}
+                >
+                  {projects.map((project) => (
+                    <ProjectCard key={project.id} project={project} onOpen={handleOpenProject} />
+                  ))}
+                </div>
+              )}
+            </section>
 
-        <button className="btn btn-primary btn-full" onClick={handleCreateProject} disabled={creating || loading}>
-          {creating ? '⏳ Создание...' : '➕ Создать проект'}
+            <button className="btn btn-primary btn-full" onClick={handleCreateProject} disabled={creating || loading}>
+              {creating ? 'Создание...' : 'Создать проект'}
+            </button>
+          </main>
+        </>
+      )}
+
+      {selfTestVisible && (
+        <SelfTestPanel
+          onOpenProject={handleOpenProject}
+          onClose={() => setSelfTestVisible(false)}
+          defaultOpen={true}
+        />
+      )}
+
+      <div className="build-stamp">
+        build {build.shortSha} <span className="build-stamp-sep">·</span> {build.buildTime}
+        <button
+          type="button"
+          className="build-stamp-btn"
+          onClick={() => setSelfTestVisible((v) => !v)}
+          aria-label="Toggle self-test"
+        >
+          ⚙︎
         </button>
-      </main>
+      </div>
     </div>
   );
 }

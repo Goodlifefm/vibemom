@@ -5,6 +5,7 @@
  */
 
 import { getApiBaseUrl } from '../config/api';
+import { trackedFetch } from './fetcher';
 
 const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'vibe_market_token';
@@ -179,6 +180,11 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const init: RequestInit = {
     method,
     headers: requestHeaders,
+    // Telegram Mini App should never rely on cookies/credentials.
+    // These defaults also reduce cross-site noise and help with deterministic debugging.
+    credentials: 'omit',
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
   };
 
   if (body !== undefined) {
@@ -187,7 +193,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await trackedFetch(url, init);
   } catch (error) {
     throw classifyFetchError(error, url);
   }
@@ -330,4 +336,26 @@ export async function createDraft(): Promise<ProjectDetails> {
  */
 export async function getProject(id: string): Promise<ProjectDetails> {
   return request<ProjectDetails>(`/projects/${id}`);
+}
+
+// =============================================================================
+// Debug API (no-auth endpoints)
+// =============================================================================
+
+export interface ClientLogResponse {
+  ok: true;
+  request_id: string;
+  received_at: string;
+}
+
+/**
+ * Send client-side logs/diagnostics to the server for debugging.
+ * Must NOT include secrets (initData, tokens, cookies).
+ */
+export async function postClientLog(payload: unknown): Promise<ClientLogResponse> {
+  return request<ClientLogResponse>('/debug/client-log', {
+    method: 'POST',
+    body: payload,
+    skipAuth: true,
+  });
 }
