@@ -82,9 +82,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_origin_regex=cors_origin_regex,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-TG-INIT-DATA", "Authorization", "X-Requested-With"],
+    # credentials=False: Telegram Mini App never sends cookies/credentials.
+    # This avoids the spec restriction that forbids wildcard origins with credentials.
+    allow_credentials=False,
+    allow_methods=["*"],
+    # Telegram WebView request headers can vary (case, extra headers). Allow all to avoid preflight failures.
+    allow_headers=["*"],
     expose_headers=["X-API-Version"],
 )
 logger.info(f"CORS enabled for origins: {cors_origins}")

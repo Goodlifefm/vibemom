@@ -5,7 +5,8 @@ This router is intentionally minimal and must never echo secrets.
 It exists to identify the real Origin / preflight headers coming from Telegram WebView.
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.logging_config import get_logger
@@ -24,6 +25,32 @@ class DebugEchoResponse(BaseModel):
 
 
 router = APIRouter(tags=["Debug"])
+
+def _apply_permissive_cors(request: Request, response: Response) -> None:
+    """
+    Maximally permissive CORS for /debug/echo to diagnose Telegram WebView.
+
+    Always active: this endpoint is temporary and never returns secrets.
+    Overrides any CORSMiddleware headers so that even unknown / null origins
+    get a valid Access-Control-Allow-Origin.
+    """
+    origin = request.headers.get("origin")
+    # If origin is missing, use '*' (safe here: this endpoint never returns secrets).
+    response.headers["Access-Control-Allow-Origin"] = origin or "*"
+    response.headers["Vary"] = "Origin"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+
+    acr_headers = request.headers.get("access-control-request-headers")
+    response.headers["Access-Control-Allow-Headers"] = acr_headers or "*"
+    # 10 minutes
+    response.headers["Access-Control-Max-Age"] = "600"
+
+
+@router.options("/debug/echo", include_in_schema=False)
+async def debug_echo_options(request: Request) -> Response:
+    response = Response(status_code=204)
+    _apply_permissive_cors(request, response)
+    return response
 
 
 @router.get(
@@ -70,4 +97,8 @@ async def debug_echo(request: Request) -> DebugEchoResponse:
         },
     )
 
-    return payload
+    # Apply permissive CORS to help diagnose Telegram WebView behavior.
+    # Overrides CORSMiddleware for this endpoint so even exotic origins work.
+    response = JSONResponse(content=payload.model_dump(exclude_none=True))
+    _apply_permissive_cors(request, response)
+    return response  # type: ignore[return-value]

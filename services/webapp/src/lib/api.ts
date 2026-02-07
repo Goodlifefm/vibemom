@@ -160,10 +160,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   const { method = 'GET', body, headers = {}, skipAuth = false } = options;
 
-  const requestHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...headers,
-  };
+  // Only send Content-Type when we actually send a JSON body.
+  // This reduces noisy preflights in constrained WebViews.
+  const requestHeaders: Record<string, string> = { ...headers };
+  if (body !== undefined && requestHeaders['Content-Type'] === undefined) {
+    requestHeaders['Content-Type'] = 'application/json';
+  }
 
   if (!skipAuth) {
     const token = getToken();
@@ -329,4 +331,3 @@ export async function createDraft(): Promise<ProjectDetails> {
 export async function getProject(id: string): Promise<ProjectDetails> {
   return request<ProjectDetails>(`/projects/${id}`);
 }
-

@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     git_branch: str = "unknown"
     build_time: str = "unknown"
 
+    # Temporary diagnostics: allow extremely permissive CORS on /debug/echo until this moment.
+    # Examples:
+    # - "2026-02-07T10:15:00Z"
+    # - "1770459300" (unix seconds)
+    debug_echo_permissive_cors_until: str = ""
+
     def get_admin_ids(self) -> set[int]:
         """Get set of admin telegram IDs."""
         raw = (self.admin_ids or self.admin_telegram_ids) or ""
@@ -103,7 +109,12 @@ class Settings(BaseSettings):
         
         # Always add Telegram origins for WebApp
         origins.add("https://web.telegram.org")
+        origins.add("https://webapp.telegram.org")
         origins.add("https://t.me")
+
+        # Telegram WebView/WKWebView sometimes sends `Origin: null`.
+        # This is a real origin string in CORS and must be explicitly allowed.
+        origins.add("null")
         
         return sorted(origins)
 
@@ -117,6 +128,32 @@ class Settings(BaseSettings):
         """
         # Regex for dynamic Vercel previews and first-party vibemom domains.
         return r"^https://([a-z0-9-]+\.)?vercel\.app$|^https://([a-z0-9-]+\.)?vibemom\.ru$"
+
+    def is_debug_echo_permissive_cors_enabled(self) -> bool:
+        """Check if /debug/echo should allow very permissive CORS (time-bounded)."""
+        raw = (self.debug_echo_permissive_cors_until or "").strip()
+        if not raw:
+            return False
+
+        try:
+            from datetime import datetime, timezone
+
+            # Unix seconds
+            if raw.isdigit():
+                until = datetime.fromtimestamp(int(raw), tz=timezone.utc)
+            else:
+                # ISO 8601 (accepts trailing Z)
+                iso = raw.replace("Z", "+00:00")
+                until = datetime.fromisoformat(iso)
+                if until.tzinfo is None:
+                    until = until.replace(tzinfo=timezone.utc)
+                else:
+                    until = until.astimezone(timezone.utc)
+
+            return datetime.now(timezone.utc) < until
+        except Exception:
+            # Fail closed if parsing fails.
+            return False
 
     @property
     def is_production(self) -> bool:

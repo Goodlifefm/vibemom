@@ -8,6 +8,7 @@ Endpoints:
 
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
+from starlette.responses import Response
 
 from app import __version__
 from app.config import get_settings
@@ -15,6 +16,13 @@ from app.db import check_db_connection
 from app.dto.models import HealthResponse, VersionResponse
 
 router = APIRouter(tags=["Health"])
+
+
+@router.head("/healthz", include_in_schema=False)
+async def healthz_head() -> Response:
+    """HEAD handler for /healthz — supports ``curl -I`` and monitoring probes."""
+    db_ok = await check_db_connection()
+    return Response(status_code=200 if db_ok else 503)
 
 
 @router.get(
