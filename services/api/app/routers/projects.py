@@ -87,7 +87,7 @@ async def create_draft_project(
     project = await service.create_draft(user.id)
 
     logger.info(
-        f"Created draft project",
+        "Created draft project",
         extra={
             "project_id": project.id,
             "telegram_id": current_user.telegram_id,
@@ -139,7 +139,7 @@ async def get_project(
         )
 
     logger.debug(
-        f"Retrieved project details",
+        "Retrieved project details",
         extra={
             "project_id": project_id,
             "telegram_id": current_user.telegram_id,
@@ -190,7 +190,7 @@ async def generate_preview(
     preview_html = service.render_preview(project.answers)
 
     logger.debug(
-        f"Generated preview",
+        "Generated preview",
         extra={
             "project_id": project_id,
             "telegram_id": current_user.telegram_id,

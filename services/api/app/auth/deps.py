@@ -78,7 +78,7 @@ async def get_current_user(
     # Import here to avoid circular imports
     try:
         # Try to import the shared User model from bot
-        from sqlalchemy import BigInteger, Boolean, DateTime, VARCHAR
+        from sqlalchemy import BigInteger, Boolean, VARCHAR
         from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
         class Base(DeclarativeBase):

@@ -19,7 +19,7 @@ from app import __version__
 from app.config import get_settings
 from app.db import close_db, get_engine
 from app.logging_config import get_logger, setup_logging
-from app.routers import auth_router, health_router, me_router, projects_router
+from app.routers import auth_router, debug_router, health_router, me_router, projects_router
 
 # Setup logging
 setup_logging()
@@ -167,6 +167,7 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(me_router)
 app.include_router(projects_router)
+app.include_router(debug_router)
 
 
 # =============================================================================
