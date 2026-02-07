@@ -214,7 +214,7 @@ export function InitDiagnosticsScreen({
           </div>
           <div className="diagnostics-row">
             <span className="diagnostics-key">apiBaseUrl</span>
-            <span className="diagnostics-value">{apiBaseUrlTrimmed || '-'}</span>
+            <span className="diagnostics-value">{apiBaseUrl || '-'}</span>
           </div>
           <div className="diagnostics-row">
             <span className="diagnostics-key">debug.echo</span>
