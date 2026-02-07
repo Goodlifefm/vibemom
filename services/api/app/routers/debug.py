@@ -29,6 +29,7 @@ router = APIRouter(tags=["Debug"])
 @router.get(
     "/debug/echo",
     response_model=DebugEchoResponse,
+    response_model_exclude_none=True,
     summary="Echo safe request metadata (no secrets)",
     description=(
         "Returns only a small allowlisted subset of request headers "
@@ -70,4 +71,3 @@ async def debug_echo(request: Request) -> DebugEchoResponse:
     )
 
     return payload
-
