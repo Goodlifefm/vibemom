@@ -3,7 +3,6 @@
 Audit: fail if Cyrillic user-facing text exists outside messages.py.
 Fail if any COPY_ID referenced in FSM (SPEC 03, 04) does not exist in messages.py.
 """
-import ast
 import re
 import sys
 from pathlib import Path
@@ -67,7 +66,7 @@ def get_fsm_referenced_copy_ids() -> set[str]:
     return ids
 
 
-CYRILLIC_EXCLUDE_FILES = {"matching.py"}  # STOP_WORDS etc. are internal data, not user-facing copy
+CYRILLIC_EXCLUDE_FILES = {"matching.py", "editor_schema.py"}  # STOP_WORDS / block/field labels (structural)
 
 
 def files_with_cyrillic_outside_messages() -> list[tuple[Path, int, str]]:

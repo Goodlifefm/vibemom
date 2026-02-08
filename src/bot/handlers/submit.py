@@ -7,11 +7,10 @@ from aiogram.fsm.context import FSMContext
 from src.bot.config import Settings
 from src.bot.fsm.states import ProjectSubmissionStates
 from src.bot.messages import get_copy
-from src.bot.keyboards import ps_nav_step, ps_resume_kb, admin_moderate_kb
-from src.bot.project_submission_schema import first_step, get_step
+from src.bot.keyboards import ps_resume_kb, admin_moderate_kb
 from src.bot.submission_engine import (
+    get_schema,
     get_current_step,
-    get_current_step_id,
     set_answer,
     set_step_id,
     validate_input,
@@ -59,16 +58,17 @@ async def cmd_submit(message: Message, state: FSMContext) -> None:
         message.from_user.full_name if message.from_user else None,
     )
     # Resume: if we have saved step in data, use it; else start from welcome
+    schema = get_schema()
     data = await state.get_data()
     saved_step_id = (data.get(META_KEY) or {}).get(STATE_KEY)
-    if saved_step_id and get_step(saved_step_id):
+    if saved_step_id and schema.get_step(saved_step_id):
         step_id = saved_step_id
     else:
-        step_id = first_step()["state_id"]
+        step_id = schema.first_step()["state_id"]
     data = set_step_id(data, step_id)
     await state.set_data(data)
     await state.set_state(ProjectSubmissionStates.filling)
-    step = get_step(step_id)
+    step = schema.get_step(step_id)
     if step:
         await _send_step(message, step, data)
     else:
@@ -85,7 +85,6 @@ async def submit_text(message: Message, state: FSMContext) -> None:
         return
 
     text_in = (message.text or "").strip()
-    state_id = step["state_id"]
     input_type = step.get("input_type") or ""
 
     # Buttons-only step: ignore text, re-send step with keyboard
@@ -99,7 +98,7 @@ async def submit_text(message: Message, state: FSMContext) -> None:
         if next_sid:
             data = set_step_id(data, next_sid)
             await state.set_data(data)
-            next_step = get_step(next_sid)
+            next_step = get_schema().get_step(next_sid)
             if next_step:
                 await _send_step(message, next_step, data)
         return
@@ -113,13 +112,13 @@ async def submit_text(message: Message, state: FSMContext) -> None:
         if next_sid:
             data = set_step_id(data, next_sid)
             await state.set_data(data)
-            next_step = get_step(next_sid)
+            next_step = get_schema().get_step(next_sid)
             if next_step:
                 await _send_step(message, next_step, data)
         return
 
     # Confirm step: yes/no
-    if state_id == "confirm":
+    if step["state_id"] == "confirm":
         yn = parse_yes_no(message.text)
         if yn is True:
             await _do_submit(message, state, data)
@@ -128,7 +127,7 @@ async def submit_text(message: Message, state: FSMContext) -> None:
             next_sid = "preview"
             data = set_step_id(data, next_sid)
             await state.set_data(data)
-            preview_step = get_step("preview")
+            preview_step = get_schema().get_step("preview")
             if preview_step:
                 await _send_step(message, preview_step, data)
             return
@@ -149,14 +148,14 @@ async def submit_text(message: Message, state: FSMContext) -> None:
     answer_key = step.get("answer_key")
     if answer_key:
         data = set_answer(data, answer_key, value)
-    next_sid = transition(step, "next")
+    next_sid = transition(step, "next", value)
     if next_sid == "__submit__":
         await _do_submit(message, state, data)
         return
     if next_sid:
         data = set_step_id(data, next_sid)
         await state.set_data(data)
-        next_step = get_step(next_sid)
+        next_step = get_schema().get_step(next_sid)
         if next_step:
             await _send_step(message, next_step, data)
 
@@ -172,7 +171,6 @@ async def submit_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     action = callback.data.split(":", 1)[1] if ":" in callback.data else ""
-    state_id = step["state_id"]
 
     if action == "save":
         await callback.message.answer(get_copy("SAVE_DRAFT_OK"), reply_markup=ps_resume_kb())
@@ -187,7 +185,7 @@ async def submit_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if next_sid:
             data = set_step_id(data, next_sid)
             await state.set_data(data)
-            next_step = get_step(next_sid)
+            next_step = get_schema().get_step(next_sid)
             if next_step:
                 await _send_step(callback, next_step, data)
         return
@@ -200,7 +198,7 @@ async def submit_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if next_sid:
             data = set_step_id(data, next_sid)
             await state.set_data(data)
-            next_step = get_step(next_sid)
+            next_step = get_schema().get_step(next_sid)
             if next_step:
                 await _send_step(callback, next_step, data)
         return
@@ -213,7 +211,7 @@ async def submit_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if next_sid:
             data = set_step_id(data, next_sid)
             await state.set_data(data)
-            next_step = get_step(next_sid)
+            next_step = get_schema().get_step(next_sid)
             if next_step:
                 await _send_step(callback, next_step, data)
         return
@@ -225,15 +223,18 @@ async def submit_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "submit_no":
         data = set_step_id(data, "preview")
         await state.set_data(data)
-        preview_step = get_step("preview")
+        preview_step = get_schema().get_step("preview")
         if preview_step:
             await _send_step(callback, preview_step, data)
         return
 
     if action == "edit":
-        data = set_step_id(data, "contact_preferred")
+        schema = get_schema()
+        # V1: contact_preferred; V2: goal_inbound_ready (last before preview)
+        edit_step_id = "contact_preferred" if schema.get_step("contact_preferred") else "goal_inbound_ready"
+        data = set_step_id(data, edit_step_id)
         await state.set_data(data)
-        next_step = get_step("contact_preferred")
+        next_step = schema.get_step(edit_step_id)
         if next_step:
             await _send_step(callback, next_step, data)
         return

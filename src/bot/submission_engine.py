@@ -1,5 +1,5 @@
 """
-Generic FSM engine for project submission. Uses project_submission_schema.
+Generic FSM engine for project submission. Schema from get_project_submission_schema(V2_ENABLED).
 Renders step text + keyboard, validates input, sets answers, transitions.
 """
 
@@ -7,11 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.bot.project_submission_schema import (
-    VALIDATORS,
-    first_step,
-    get_step,
-)
+from src.bot.config import Settings
+from src.bot.project_submission_schema import get_project_submission_schema
 from src.bot.messages import get_copy
 from src.bot.keyboards import (
     ps_nav_step,
@@ -25,6 +22,11 @@ META_KEY = "_meta"
 STATE_KEY = "project_submission_state"
 
 
+def get_schema():
+    """Return schema (V1 or V2) based on Settings().v2_enabled."""
+    return get_project_submission_schema(Settings().v2_enabled)
+
+
 def get_current_step_id(data: dict) -> str | None:
     meta = data.get(META_KEY) or {}
     return meta.get(STATE_KEY)
@@ -32,7 +34,7 @@ def get_current_step_id(data: dict) -> str | None:
 
 def get_current_step(data: dict) -> dict[str, Any] | None:
     sid = get_current_step_id(data)
-    return get_step(sid) if sid else None
+    return get_schema().get_step(sid) if sid else None
 
 
 def set_answer(data: dict, answer_key: str, value: Any) -> dict:
@@ -59,18 +61,23 @@ def validate_input(step: dict[str, Any], text: str | None) -> tuple[bool, Any]:
     vname = step.get("validator") or ""
     if not vname:
         return True, None
-    fn = VALIDATORS.get(vname)
+    fn = get_schema().VALIDATORS.get(vname)
     if not fn:
         return True, text
     return fn(text)
 
 
-def transition(step: dict[str, Any], action: str) -> str | None:
+def transition(step: dict[str, Any], action: str, answer_value: Any = None) -> str | None:
     """action: 'next' | 'back' | 'skip'. Returns next state_id or __submit__."""
     if action == "back":
         return step.get("back_id")
     if action == "skip":
         return step.get("skip_id") or step.get("next_id")
+    if action == "next" and step.get("state_id") == "author_contact_type" and answer_value is not None:
+        val = str(answer_value).strip().lower()
+        if val in ("email", "e-mail"):
+            return "author_email"
+        return "author_telegram"
     return step.get("next_id")
 
 
@@ -92,9 +99,12 @@ def render_step(step: dict[str, Any], data: dict) -> tuple[str, Any]:
         post = render_project_post(
             fields["title"], fields["description"], fields["stack"],
             fields["link"], fields["price"], fields["contact"],
+            gtm_stage=fields.get("gtm_stage") or "",
+            gtm_channels=fields.get("gtm_channels"),
+            gtm_traction=fields.get("gtm_traction") or "",
         )
         text = post + "\n\n" + get_copy("SUBMIT_PREVIEW")
-        reply_markup = ps_nav_step(back=True, next_=True, save=False, skip=False)
+        reply_markup = ps_preview_kb()
         return text, reply_markup
 
     if state_id == "confirm":

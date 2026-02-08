@@ -3,10 +3,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: vibe_market
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -20,8 +18,81 @@ services:
         condition: service_healthy
     environment:
       BOT_TOKEN: ${BOT_TOKEN:-}
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/vibe_market
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/vibe_market
+      ADMIN_IDS: ${ADMIN_IDS:-}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+      ADMIN_CHAT_ID: ${ADMIN_CHAT_ID:-}
+      FEED_CHAT_ID: ${FEED_CHAT_ID:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_ENV: ${APP_ENV:-local}
+      V2_ENABLED: ${V2_ENABLED:-false}
+      V2_CANARY_MODE: ${V2_CANARY_MODE:-false}
+      V2_ALLOWLIST: ${V2_ALLOWLIST:-}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      WEBAPP_URL: ${WEBAPP_URL:-}
+      # Version tracking for deployment verification
+      GIT_SHA: ${GIT_SHA:-unknown}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      BUILD_TIME: ${BUILD_TIME:-unknown}
     env_file:
       - .env
-    command: sh -c "alembic upgrade head && python main.py"
+    command: ["/app/scripts/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.bot.health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  api:
+    build: services/api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/vibe_market
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      TARGET_CHANNEL_ID: ${TARGET_CHANNEL_ID:-}
+      FEED_CHAT_ID: ${FEED_CHAT_ID:-}
+      API_JWT_SECRET: ${API_JWT_SECRET:-change-me-in-production}
+      API_JWT_TTL_MIN: ${API_JWT_TTL_MIN:-43200}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      WEBAPP_ORIGINS: ${WEBAPP_ORIGINS:-}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-}
+      WEBAPP_URL: ${WEBAPP_URL:-}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-}
+      ADMIN_IDS: ${ADMIN_IDS:-}
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_ENV: ${APP_ENV:-production}
+      TG_INIT_DATA_SKIP_VERIFY: ${TG_INIT_DATA_SKIP_VERIFY:-false}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      BUILD_TIME: ${BUILD_TIME:-unknown}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # =============================================================================
+  # Mini App Frontend (optional - for local development)
+  # =============================================================================
+  # Production deployment should use Vercel/Cloudflare Pages
+  webapp:
+    build:
+      context: services/webapp
+      args:
+        VITE_API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+    ports:
+      - "3000:80"
+    profiles:
+      - webapp  # Only runs with: docker compose --profile webapp up
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

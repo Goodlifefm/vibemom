@@ -81,7 +81,7 @@ def test_resume_from_saved_state():
 
 def test_fsm_path_welcome_to_title_to_subtitle_back_to_title():
     """Path: welcome -> next -> title -> next -> title_subtitle -> back -> title."""
-    from src.bot.project_submission_schema import first_step, get_step
+    from src.bot.project_submission_schema import first_step
     data = {}
     data = set_step_id(data, first_step()["state_id"])
     step = get_current_step(data)
@@ -116,3 +116,27 @@ def test_fsm_path_preview_to_confirm_back_to_preview():
     assert transition(step, "next") == "confirm"
     step = get_step("confirm")
     assert transition(step, "back") == "preview"
+
+
+def test_fsm_path_skip_from_stack_other_to_link():
+    """Path: stack_other (skippable) -> skip -> link."""
+    step = get_step("stack_other")
+    assert step.get("skippable") is True
+    next_id = transition(step, "skip")
+    assert next_id == "link"
+
+
+def test_author_contact_type_conditional_routing():
+    """author_contact_type: next with 'email' -> author_email, else -> author_telegram (V2 schema)."""
+    from src.bot.project_submission_schema import get_project_submission_schema
+
+    schema = get_project_submission_schema(True)
+    step = schema.get_step("author_contact_type")
+    if not step:
+        pytest.skip("V2 schema without author_contact_type")
+    assert transition(step, "next", "email") == "author_email"
+    assert transition(step, "next", "Email") == "author_email"
+    assert transition(step, "next", "e-mail") == "author_email"
+    assert transition(step, "next", "telegram") == "author_telegram"
+    assert transition(step, "next", "Telegram") == "author_telegram"
+    assert transition(step, "next", None) == "author_telegram"

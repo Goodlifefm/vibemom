@@ -3,7 +3,6 @@ from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.bot.config import Settings
-from src.bot.database.models import Base
 
 
 def get_engine(settings: Settings | None = None):

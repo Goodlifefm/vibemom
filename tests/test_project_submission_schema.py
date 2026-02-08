@@ -1,6 +1,5 @@
 """Tests for project submission schema (SPEC 03)."""
 
-import pytest
 
 from src.bot.project_submission_schema import (
     STEPS,
@@ -84,3 +83,24 @@ def test_every_step_copy_id_exists_in_messages():
             continue
         text = get_copy(copy_id)
         assert text is not None and len(text.strip()) > 0, f"copy_id {copy_id!r} missing or empty in messages"
+
+
+def test_get_project_submission_schema_v1():
+    """get_project_submission_schema(False) returns V1 schema with 23 steps."""
+    from src.bot.project_submission_schema import get_project_submission_schema
+    schema = get_project_submission_schema(False)
+    assert len(schema.STEPS) == 23
+    assert schema.first_step()["state_id"] == "welcome"
+    assert schema.get_step("title") is not None
+    assert schema.get_step("confirm")["next_id"] == "__submit__"
+
+
+def test_get_project_submission_schema_v2():
+    """get_project_submission_schema(True) returns V2 schema with 25+ steps."""
+    from src.bot.project_submission_schema import get_project_submission_schema
+    schema = get_project_submission_schema(True)
+    assert len(schema.STEPS) >= 25
+    assert schema.first_step()["state_id"] == "welcome"
+    assert schema.get_step("author_name") is not None
+    assert schema.get_step("preview") is not None
+    assert schema.get_step("confirm")["next_id"] == "__submit__"

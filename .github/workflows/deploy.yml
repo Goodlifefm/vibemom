@@ -1,0 +1,149 @@
+# Auto-deploy to VPS on push to v2-editor branch.
+# Manual trigger: Actions -> Deploy to VPS -> Run workflow.
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - v2-editor
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      # VPS_PORT is optional - defaults to 22 if not set
+      SSH_PORT: ${{ secrets.VPS_PORT }}  # actionlint: ignore[expression]
+
+    steps:
+      - name: Resolve SSH port
+        id: ssh_port
+        run: echo "port=${SSH_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ steps.ssh_port.outputs.port }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+
+            echo "=== Deploy started at $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
+
+            cd /root/vibemom || { echo "Error: /root/vibemom not found"; exit 1; }
+
+            # Ensure we're on the correct branch and fully synced
+            git fetch --all --prune
+            git checkout v2-editor 2>/dev/null || git checkout -b v2-editor origin/v2-editor
+            git reset --hard origin/v2-editor
+
+            # Version info for deployment verification
+            GIT_SHA=$(git rev-parse --short HEAD)
+            GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+            echo "=== Deploying version ==="
+            echo "SHA: $GIT_SHA"
+            echo "Branch: $GIT_BRANCH"
+            echo "Build: $BUILD_TIME"
+            echo "========================="
+
+            # Write version vars to .env (atomic update) and fix DATABASE_URL
+            if [ -f .env ]; then
+              # Remove version vars and ensure correct DATABASE_URL
+              grep -v -E '^(GIT_SHA|GIT_BRANCH|BUILD_TIME)=' .env > .env.new || true
+            else
+              touch .env.new
+            fi
+            echo "GIT_SHA=$GIT_SHA" >> .env.new
+            echo "GIT_BRANCH=$GIT_BRANCH" >> .env.new
+            echo "BUILD_TIME=$BUILD_TIME" >> .env.new
+            mv .env.new .env
+            
+            echo "=== DATABASE_URL in .env ==="
+            grep DATABASE_URL .env || echo "DATABASE_URL not set in .env (will use docker-compose default)"
+
+            # Verify docker-compose has expected services
+            echo "=== Configured services ==="
+            docker compose config --services
+
+            # Pull base images
+            docker compose pull db || true
+
+            # Build fresh (no cache) for bot and api
+            echo "=== Building bot and api (no-cache) ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache bot api
+
+            # Deploy with force-recreate to ensure fresh containers
+            # Production uses docker-compose.prod.yml for nginx + SSL
+            echo "=== Starting services ==="
+            
+            # Check if SSL certificates exist (via docker volume or local path)
+            SSL_READY=false
+            if docker volume inspect vibemom_letsencrypt >/dev/null 2>&1; then
+              # Check if certificate files exist in volume
+              if docker run --rm -v vibemom_letsencrypt:/etc/letsencrypt alpine ls /etc/letsencrypt/live/ 2>/dev/null | grep -q .; then
+                SSL_READY=true
+              fi
+            fi
+            
+            if [ "$SSL_READY" = "true" ]; then
+              echo "SSL certificates found, starting with nginx (production mode)"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate db bot api nginx
+            else
+              echo "No SSL certificates found, starting without nginx"
+              echo "To enable HTTPS, run: make cert-issue DOMAIN=api.<YOUR_DOMAIN> EMAIL=<YOUR_EMAIL>"
+              docker compose up -d --force-recreate db bot api
+            fi
+
+            # Nginx resolves upstream names on startup (Docker service IPs can change after recreate).
+            # Restart nginx (if present) to refresh upstream DNS and avoid transient 502s.
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx 2>/dev/null || true
+
+            # Wait for services to stabilize
+            sleep 5
+
+            # Show running containers
+            echo "=== Container status ==="
+            docker compose ps
+
+            # Show bot logs
+            echo "=== Bot logs (last 80 lines) ==="
+            docker compose logs --tail=80 bot
+
+            # Show api logs (may not be running yet on first deploy)
+            echo "=== API logs (last 80 lines) ==="
+            docker compose logs --tail=80 api || echo "(api service not running yet)"
+
+            # Show nginx logs (if running)
+            echo "=== Nginx logs (last 60 lines) ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=60 nginx 2>/dev/null || echo "(nginx service not running - SSL not configured yet)"
+
+            # Health checks
+            echo "=== Health checks ==="
+            sleep 5
+            
+            # Internal health check (always works)
+            echo "Internal API health check:"
+            docker compose exec -T api curl -sS --max-time 5 http://localhost:8000/healthz || echo "API healthz: not responding (may still be starting)"
+            docker compose exec -T api curl -sS --max-time 5 http://localhost:8000/version || echo "API version: not responding"
+            
+            # HTTPS health check (optional - only if domain is configured)
+            # Read API_DOMAIN from .env if present
+            if grep -q "^API_PUBLIC_URL=https://" .env 2>/dev/null; then
+              API_DOMAIN=$(grep "^API_PUBLIC_URL=" .env | sed 's/API_PUBLIC_URL=https:\/\///' | tr -d '\r\n')
+              if [ -n "$API_DOMAIN" ]; then
+                echo "HTTPS health check (${API_DOMAIN}):"
+                curl -sS --max-time 10 "https://${API_DOMAIN}/healthz" || echo "HTTPS healthz: not responding (SSL may not be configured yet)"
+              fi
+            fi
+
+            echo "=== Deploy completed at $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
