@@ -533,6 +533,12 @@ export interface Project {
   fix_request_preview: string | null;
   current_step: string | null;
   missing_fields: string[];
+
+  // Public publishing (MVP)
+  published?: boolean;
+  published_at?: string | null;
+  public_slug?: string | null;
+  show_contacts?: boolean;
 }
 
 export interface ProjectDetails {
@@ -560,6 +566,12 @@ export interface ProjectDetails {
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
+
+  // Public publishing (MVP)
+  published?: boolean;
+  published_at?: string | null;
+  public_slug?: string | null;
+  show_contacts?: boolean;
 }
 
 /**
@@ -603,6 +615,70 @@ export async function patchProject(id: string, patch: ProjectPatch): Promise<Pro
   return request<ProjectDetails>(`/projects/${id}`, {
     method: 'PATCH',
     body: patch,
+  });
+}
+
+export interface PublicProjectListItem {
+  id: string;
+  slug: string | null;
+  public_id: string;
+  public_url: string;
+  published_at: string | null;
+  title: string;
+  problem: string | null;
+  audience_type: string | null;
+  niche: string | null;
+}
+
+export interface PublicProject {
+  id: string;
+  slug: string | null;
+  public_id: string;
+  public_url: string;
+  published_at: string | null;
+  show_contacts: boolean;
+  title: string;
+  problem: string | null;
+  audience_type: string | null;
+  niche: string | null;
+  what_done: string | null;
+  stack: string | null;
+  dev_time: string | null;
+  potential: string | null;
+  goal: string | null;
+  author_name: string | null;
+  contact_mode: string | null;
+  contact_value: string | null;
+}
+
+/**
+ * Publish a project to the public storefront.
+ */
+export async function publishProject(id: string, params: { show_contacts: boolean }): Promise<PublicProject> {
+  return request<PublicProject>(`/projects/${id}/publish`, {
+    method: 'POST',
+    body: { show_contacts: params.show_contacts },
+  });
+}
+
+/**
+ * List public published projects.
+ */
+export async function getPublicProjects(params: { limit?: number; offset?: number } = {}): Promise<PublicProjectListItem[]> {
+  const limit = typeof params.limit === 'number' ? params.limit : 50;
+  const offset = typeof params.offset === 'number' ? params.offset : 0;
+  return request<PublicProjectListItem[]>(`/public/projects?limit=${limit}&offset=${offset}`, {
+    skipAuth: true,
+  });
+}
+
+/**
+ * Get a public published project by id_or_slug.
+ */
+export async function getPublicProject(idOrSlug: string): Promise<PublicProject> {
+  const encoded = encodeURIComponent(String(idOrSlug || '').trim());
+  return request<PublicProject>(`/public/projects/${encoded}`, {
+    skipAuth: true,
   });
 }
 

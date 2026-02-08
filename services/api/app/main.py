@@ -19,7 +19,7 @@ from app import __version__
 from app.config import get_settings
 from app.db import close_db, get_engine
 from app.logging_config import get_logger, setup_logging
-from app.routers import auth_router, debug_router, health_router, me_router, projects_router
+from app.routers import auth_router, debug_router, health_router, me_router, projects_router, public_router
 
 # Setup logging
 setup_logging()
@@ -181,9 +181,23 @@ async def selected_request_logging(request: Request, call_next):
         and not path.endswith("/preview")
         and path.count("/") == 2
     )
+    is_project_publish = (
+        path.startswith("/projects/")
+        and path.endswith("/publish")
+        and path.count("/") == 3
+    )
+    is_public_projects_list = path == "/public/projects"
+    is_public_project_detail = path.startswith("/public/projects/") and path.count("/") == 3
     is_client_log = path == "/debug/client-log"
 
-    if is_projects_my or is_project_detail or is_client_log:
+    if (
+        is_projects_my
+        or is_project_detail
+        or is_project_publish
+        or is_public_projects_list
+        or is_public_project_detail
+        or is_client_log
+    ):
         logger.info(
             "Request",
             extra={
@@ -207,6 +221,7 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(me_router)
 app.include_router(projects_router)
+app.include_router(public_router)
 app.include_router(debug_router)
 
 

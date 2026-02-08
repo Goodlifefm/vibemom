@@ -15,7 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import CurrentUser, get_current_user
 from app.db import get_session
-from app.dto.models import PreviewDTO, ProjectDetailsDTO, ProjectListItemDTO, ProjectPatchDTO
+from app.dto.models import (
+    PreviewDTO,
+    ProjectDetailsDTO,
+    ProjectListItemDTO,
+    ProjectPatchDTO,
+    PublishProjectRequestDTO,
+    PublicProjectDTO,
+)
 from app.logging_config import get_logger
 from app.services.projects_service import ProjectsService
 
@@ -208,6 +215,58 @@ async def patch_project(
     )
 
     return updated
+
+
+@router.post(
+    "/{project_id}/publish",
+    response_model=PublicProjectDTO,
+    summary="Publish project",
+    description="Publish a project to the public storefront. User must be owner.",
+    responses={
+        400: {"description": "Project is not ready for publish (missing required fields)"},
+        404: {"description": "Project not found or access denied"},
+    },
+)
+async def publish_project(
+    project_id: str,
+    payload: PublishProjectRequestDTO,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PublicProjectDTO:
+    service = ProjectsService(session)
+
+    # Ensure user exists in DB
+    user_id = current_user.db_id
+    if user_id is None:
+        user = await service.get_or_create_user(
+            telegram_id=current_user.telegram_id,
+            username=current_user.username,
+            full_name=current_user.full_name,
+        )
+        user_id = user.id
+
+    try:
+        published = await service.publish_project(
+            project_id=project_id,
+            user_id=user_id,
+            show_contacts=payload.show_contacts,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if published is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found or access denied")
+
+    logger.info(
+        "Published project (Mini App)",
+        extra={
+            "project_id": project_id,
+            "telegram_id": current_user.telegram_id,
+            "show_contacts": payload.show_contacts,
+        },
+    )
+
+    return published
 
 
 @router.post(

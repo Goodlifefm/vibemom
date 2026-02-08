@@ -17,6 +17,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from app.dto.models import (
     NextActionDTO,
     NextActionType,
+    PublicProjectDTO,
+    PublicProjectListItemDTO,
     ProjectDetailsDTO,
     ProjectFieldsDTO,
     ProjectListItemDTO,
@@ -54,6 +56,11 @@ class Submission(Base):
     answers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     rendered_post: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_step: Mapped[str | None] = mapped_column(VARCHAR(50), nullable=True)
+    # Mini App public publishing (MVP).
+    published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    public_slug: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
+    show_contacts: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     fix_request: Mapped[str | None] = mapped_column(Text, nullable=True)
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -93,6 +100,18 @@ REQUIRED_FIELDS = [
     "inbound_ready",
     "author_name",
     "author_contact_mode",
+    "author_contact_value",
+]
+
+# MVP-required fields for the Mini App wizard publish flow (7/7).
+# Keep this in sync with `services/webapp/src/lib/mvpWizard.ts`.
+MVP_REQUIRED_FIELDS = [
+    "project_title",
+    "problem",
+    "audience_type",
+    "niche",
+    "goal",
+    "author_name",
     "author_contact_value",
 ]
 
@@ -311,6 +330,91 @@ class ProjectsService:
 
         return self._to_details_dto(submission)
 
+    # =========================================================================
+    # Public publishing (Mini App MVP)
+    # =========================================================================
+
+    async def publish_project(
+        self,
+        project_id: str,
+        user_id: int,
+        show_contacts: bool = False,
+    ) -> PublicProjectDTO | None:
+        """Publish project to the public storefront."""
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            return None
+
+        result = await self.session.execute(select(Submission).where(Submission.id == pid))
+        submission = result.scalar_one_or_none()
+        if submission is None or submission.user_id != user_id:
+            return None
+
+        answers: dict[str, Any] = dict(submission.answers or {})
+        missing = self._calculate_mvp_missing(answers)
+        if missing:
+            raise ValueError(f"Missing required fields: {', '.join(missing)}")
+
+        now = datetime.utcnow()
+        if submission.published is not True:
+            submission.published = True
+            submission.published_at = now
+        elif submission.published_at is None:
+            submission.published_at = now
+
+        submission.show_contacts = bool(show_contacts)
+        submission.updated_at = now
+
+        await self.session.commit()
+        await self.session.refresh(submission)
+
+        logger.info(
+            "Published project",
+            extra={
+                "project_id": str(submission.id),
+                "user_id": user_id,
+                "show_contacts": submission.show_contacts,
+            },
+        )
+
+        return self._to_public_project_dto(submission)
+
+    async def list_public_projects(self, limit: int = 50, offset: int = 0) -> list[PublicProjectListItemDTO]:
+        """List published projects for the public storefront (no-auth)."""
+        limit = max(1, min(50, int(limit)))
+        offset = max(0, int(offset))
+
+        result = await self.session.execute(
+            select(Submission)
+            .where(Submission.published.is_(True))
+            .order_by(Submission.published_at.desc().nullslast(), Submission.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        submissions = result.scalars().all()
+        return [self._to_public_list_item_dto(s) for s in submissions]
+
+    async def get_public_project_by_identifier(self, id_or_slug: str) -> PublicProjectDTO | None:
+        """Get a published project by UUID or public_slug (no-auth)."""
+        raw = (id_or_slug or "").strip()
+        if not raw:
+            return None
+
+        stmt = select(Submission).where(Submission.published.is_(True))
+        try:
+            pid = uuid.UUID(raw)
+            stmt = stmt.where(Submission.id == pid)
+        except ValueError:
+            stmt = stmt.where(Submission.public_slug == raw)
+
+        result = await self.session.execute(stmt)
+        submission = result.scalar_one_or_none()
+        if submission is None:
+            return None
+
+        return self._to_public_project_dto(submission)
+
     def render_preview(self, answers: dict[str, Any] | None) -> str:
         """
         Render project post HTML from answers.
@@ -427,6 +531,10 @@ class ProjectsService:
             fix_request_preview=submission.fix_request[:100] if submission.fix_request else None,
             current_step=submission.current_step,
             missing_fields=missing,
+            published=submission.published,
+            published_at=submission.published_at,
+            public_slug=submission.public_slug,
+            show_contacts=submission.show_contacts,
         )
 
     def _to_details_dto(self, submission: Submission) -> ProjectDetailsDTO:
@@ -474,6 +582,10 @@ class ProjectsService:
             created_at=submission.created_at,
             updated_at=submission.updated_at,
             submitted_at=submission.submitted_at,
+            published=submission.published,
+            published_at=submission.published_at,
+            public_slug=submission.public_slug,
+            show_contacts=submission.show_contacts,
         )
 
     def _calculate_completion(self, answers: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -491,6 +603,85 @@ class ProjectsService:
                 missing.append(key)
 
         return filled, missing
+
+    def _calculate_mvp_missing(self, answers: dict[str, Any]) -> list[str]:
+        """Missing MVP-required fields for the Mini App wizard (7/7)."""
+        missing: list[str] = []
+        for key in MVP_REQUIRED_FIELDS:
+            value = self._get_value_raw(answers, key)
+            if value is None or value == "" or value == []:
+                missing.append(key)
+        return missing
+
+    def _build_public_url(self, public_id: str) -> str:
+        """Build a shareable public URL for a published project."""
+        from app.config import get_settings
+
+        settings = get_settings()
+        base = (settings.webapp_url or "https://app.vibemom.ru").strip().rstrip("/")
+        return f"{base}/p/{public_id}"
+
+    def _public_id(self, submission: Submission) -> str:
+        slug = (submission.public_slug or "").strip()
+        return slug or str(submission.id)
+
+    def _to_public_list_item_dto(self, submission: Submission) -> PublicProjectListItemDTO:
+        answers: dict[str, Any] = dict(submission.answers or {})
+        public_id = self._public_id(submission)
+        title = self._get_value(answers, "project_title", "title") or "Без названия"
+
+        return PublicProjectListItemDTO(
+            id=str(submission.id),
+            slug=submission.public_slug,
+            public_id=public_id,
+            public_url=self._build_public_url(public_id),
+            published_at=submission.published_at,
+            title=title,
+            problem=self._get_value(answers, "problem", "description"),
+            audience_type=self._get_value(answers, "audience_type"),
+            niche=self._get_value(answers, "niche"),
+        )
+
+    def _to_public_project_dto(self, submission: Submission) -> PublicProjectDTO:
+        answers: dict[str, Any] = dict(submission.answers or {})
+        public_id = self._public_id(submission)
+
+        # Stack: prefer explicit free-form field, fallback to structured parts.
+        stack = self._get_value(answers, "stack_reason", "stack")
+        if not stack:
+            stack_parts = []
+            for key in ["stack_ai", "stack_tech", "stack_infra"]:
+                val = self._get_value(answers, key)
+                if val:
+                    stack_parts.append(val)
+            stack = ", ".join(stack_parts) if stack_parts else None
+
+        show_contacts = bool(submission.show_contacts)
+        contact_value = (
+            self._get_value(answers, "author_contact_value", "author_contact", "contact") if show_contacts else None
+        )
+        contact_mode = self._get_value(answers, "author_contact_mode") if show_contacts else None
+
+        return PublicProjectDTO(
+            id=str(submission.id),
+            slug=submission.public_slug,
+            public_id=public_id,
+            public_url=self._build_public_url(public_id),
+            published_at=submission.published_at,
+            show_contacts=show_contacts,
+            title=self._get_value(answers, "project_title", "title") or "Без названия",
+            problem=self._get_value(answers, "problem", "description"),
+            audience_type=self._get_value(answers, "audience_type"),
+            niche=self._get_value(answers, "niche"),
+            what_done=self._get_value(answers, "what_done"),
+            stack=stack,
+            dev_time=self._get_value(answers, "dev_time", "time_spent"),
+            potential=self._get_value(answers, "potential"),
+            goal=self._get_value(answers, "goal", "goal_pub"),
+            author_name=self._get_value(answers, "author_name"),
+            contact_mode=contact_mode,
+            contact_value=contact_value,
+        )
 
     def _get_next_action(self, status: ProjectStatus, missing_fields: list[str]) -> NextActionDTO:
         """Determine next action based on status and completion."""

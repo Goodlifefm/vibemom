@@ -137,6 +137,12 @@ class ProjectListItemDTO(BaseModel):
     current_step: str | None = None
     missing_fields: list[str] = Field(default_factory=list)
 
+    # Public publishing (MVP)
+    published: bool = False
+    published_at: datetime | None = None
+    public_slug: str | None = None
+    show_contacts: bool = False
+
 
 class ProjectFieldsDTO(BaseModel):
     """Normalized project fields for rendering."""
@@ -220,6 +226,12 @@ class ProjectDetailsDTO(BaseModel):
     updated_at: datetime
     submitted_at: datetime | None = None
 
+    # Public publishing (MVP)
+    published: bool = False
+    published_at: datetime | None = None
+    public_slug: str | None = None
+    show_contacts: bool = False
+
 
 class ProjectPatchDTO(BaseModel):
     """Partial project update payload (PATCH /projects/{id}).
@@ -244,6 +256,57 @@ class PreviewDTO(BaseModel):
     """Preview response."""
 
     preview_html: str
+
+
+# =============================================================================
+# Public Projects (no-auth)
+# =============================================================================
+
+
+class PublishProjectRequestDTO(BaseModel):
+    """Request body for POST /projects/{id}/publish."""
+
+    show_contacts: bool = False
+
+
+class PublicProjectListItemDTO(BaseModel):
+    """Public project item for storefront list."""
+
+    id: str
+    slug: str | None = None
+    public_id: str  # slug if present, else id
+    public_url: str
+    published_at: datetime | None = None
+
+    title: str
+    problem: str | None = None
+    audience_type: str | None = None
+    niche: str | None = None
+
+
+class PublicProjectDTO(BaseModel):
+    """Public project card for /public/projects/{id_or_slug}."""
+
+    id: str
+    slug: str | None = None
+    public_id: str  # slug if present, else id
+    public_url: str
+    published_at: datetime | None = None
+    show_contacts: bool = False
+
+    title: str
+    problem: str | None = None
+    audience_type: str | None = None
+    niche: str | None = None
+    what_done: str | None = None
+    stack: str | None = None
+    dev_time: str | None = None
+    potential: str | None = None
+    goal: str | None = None
+
+    author_name: str | None = None
+    contact_mode: str | None = None
+    contact_value: str | None = None
 
 
 # =============================================================================

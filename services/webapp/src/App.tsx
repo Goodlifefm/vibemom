@@ -11,12 +11,15 @@ import {
   getApiErrorInfo,
   getProject,
   getProjects,
+  getPublicProjects,
   getToken,
+  type PublicProjectListItem,
   type ApiErrorInfo,
   type Project,
   type ProjectDetails,
 } from './lib/api';
 import { WizardScreen } from './components/WizardScreen';
+import { PublicProjectScreen } from './components/PublicProjectScreen';
 import { calcMvpPercentFromListItem } from './lib/mvpWizard';
 import { useBuildStamp } from './lib/useBuildStamp';
 import { getLastErrors, getLastRequest, installGlobalErrorTracking } from './lib/fetcher';
@@ -24,6 +27,28 @@ import { isSelfTestEnabled } from './lib/selfTest';
 import { installGlobalTapTracking, recordTapFromReactEvent } from './lib/tapTracker';
 
 type ProjectStatus = 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
+type RouteState = { kind: 'app' } | { kind: 'public'; idOrSlug: string };
+type FeedTab = 'my' | 'public';
+
+function parseRouteFromPathname(pathname: string): RouteState {
+  const parts = String(pathname || '/')
+    .split('/')
+    .filter((p) => p.length > 0);
+  if (parts[0] !== 'p' || parts.length < 2) {
+    return { kind: 'app' };
+  }
+  try {
+    const idOrSlug = decodeURIComponent(parts[1] || '').trim();
+    return idOrSlug ? { kind: 'public', idOrSlug } : { kind: 'app' };
+  } catch {
+    return { kind: 'app' };
+  }
+}
+
+function parseRouteFromLocation(): RouteState {
+  if (typeof window === 'undefined') return { kind: 'app' };
+  return parseRouteFromPathname(window.location.pathname || '/');
+}
 
 const BOOT_WATCHDOG_TIMEOUT_MS = 2800;
 
@@ -206,6 +231,77 @@ function ProjectCard({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function PublicProjectCard({
+  project,
+  onOpen,
+}: {
+  project: PublicProjectListItem;
+  onOpen: (idOrSlug: string) => void;
+}) {
+  const lastFireRef = useRef(0);
+  const fireOpen = useCallback(
+    (source: string) => {
+      const now = Date.now();
+      // Touch events in mobile WebViews can trigger multiple synthetic events (touchend + click).
+      if (now - lastFireRef.current < 350) {
+        return;
+      }
+      lastFireRef.current = now;
+
+      console.log(`[DEBUG] open public project source=${source} id_or_slug=${project.public_id}`);
+      onOpen(project.public_id);
+    },
+    [onOpen, project.public_id],
+  );
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className="card card-clickable"
+      onPointerUp={() => fireOpen('pointerup')}
+      onTouchEnd={() => fireOpen('touchend')}
+      onClick={() => fireOpen('click')}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          fireOpen('keydown');
+        }
+      }}
+    >
+      <div className="card-header">
+        <h3 className="card-title">{project.title || 'Без названия'}</h3>
+        <span className="badge badge-approved">Опубликовано</span>
+      </div>
+      <div className="card-body">
+        {(project.problem || project.audience_type) && (
+          <p style={{ marginTop: 6 }}>
+            {[project.problem, project.audience_type].filter((v) => Boolean(v && String(v).trim())).join(' · ')}
+          </p>
+        )}
+        {project.niche ? <p className="progress-text">Ниша: {project.niche}</p> : null}
+      </div>
+      <div className="card-footer">
+        <button
+          type="button"
+          className="btn btn-primary btn-compact"
+          onPointerUp={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(project.public_id);
+          }}
+        >
+          Открыть
+        </button>
+        <svg className="card-chevron" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M7.5 4L13.5 10L7.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
     </div>
@@ -526,6 +622,34 @@ function App() {
     installGlobalTapTracking();
   }, []);
 
+  const [route, setRoute] = useState<RouteState>(() => parseRouteFromLocation());
+  const [feed, setFeed] = useState<FeedTab>('my');
+
+  useEffect(() => {
+    const onPopState = () => setRoute(parseRouteFromLocation());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const navigate = useCallback((path: string) => {
+    if (typeof window === 'undefined') return;
+    window.history.pushState({}, '', path);
+    setRoute(parseRouteFromPathname(path));
+  }, []);
+
+  const openPublicProject = useCallback(
+    (idOrSlug: string) => {
+      const clean = String(idOrSlug || '').trim();
+      if (!clean) return;
+      navigate(`/p/${encodeURIComponent(clean)}`);
+    },
+    [navigate],
+  );
+
+  const handlePublicBack = useCallback(() => {
+    window.history.back();
+  }, []);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [initAttempt, setInitAttempt] = useState(0);
@@ -545,6 +669,12 @@ function App() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailErrorDetails, setDetailErrorDetails] = useState<string | null>(null);
   const [detailFetchErrorInfo, setDetailFetchErrorInfo] = useState<ApiErrorInfo | null>(null);
+
+  const [publicProjects, setPublicProjects] = useState<PublicProjectListItem[]>([]);
+  const [publicLoading, setPublicLoading] = useState(false);
+  const [publicError, setPublicError] = useState<string | null>(null);
+  const [publicErrorDetails, setPublicErrorDetails] = useState<string | null>(null);
+  const [publicFetchErrorInfo, setPublicFetchErrorInfo] = useState<ApiErrorInfo | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToastMessage(null), []);
@@ -707,9 +837,54 @@ function App() {
     }
   }, [handleApiFailure, isDemo, tryAuth]);
 
+  const loadPublicProjects = useCallback(async () => {
+    if (isDemo) {
+      setPublicProjects([]);
+      setPublicError('Подключите API для просмотра публичных проектов');
+      setPublicErrorDetails(null);
+      setPublicFetchErrorInfo(null);
+      return;
+    }
+
+    setPublicLoading(true);
+    setPublicError(null);
+    setPublicErrorDetails(null);
+    setPublicFetchErrorInfo(null);
+
+    try {
+      const data = await getPublicProjects({ limit: 50, offset: 0 });
+      setPublicProjects(data);
+    } catch (err) {
+      const info = getApiErrorInfo(err);
+      const e = err instanceof Error ? err : new Error(String(err));
+      setPublicFetchErrorInfo(info);
+      setPublicError(`Network error: ${e.name} ${e.message || info.message || 'Request failed'}`);
+      setPublicErrorDetails(
+        JSON.stringify(
+          {
+            status: info.status ?? null,
+            message: info.message || null,
+            request: info.request ?? null,
+            error_report_id: info.errorReportRequestId ?? null,
+            stack: e.stack ?? null,
+            lastRequest: getLastRequest(),
+          },
+          null,
+          2,
+        ),
+      );
+      setPublicProjects([]);
+    } finally {
+      setPublicLoading(false);
+    }
+  }, [isDemo]);
+
   useEffect(() => {
+    if (route.kind !== 'app') {
+      return;
+    }
     loadProjects();
-  }, [loadProjects]);
+  }, [loadProjects, route.kind]);
 
   const handleCreateProject = useCallback(async () => {
     if (isDemo) {
@@ -808,6 +983,13 @@ function App() {
     [apiUnavailable, isDemo],
   );
 
+  const handleOpenPublicProject = useCallback(
+    (idOrSlug: string) => {
+      openPublicProject(idOrSlug);
+    },
+    [openPublicProject],
+  );
+
   const handleOpenWizard = useCallback(
     (id: string) => {
       if (isDemo) {
@@ -835,7 +1017,9 @@ function App() {
     <div className={`container${selfTestVisible ? ' selftest-enabled' : ''}`}>
       {toastMessage && <Toast message={toastMessage} onDismiss={dismissToast} />}
 
-      {screen === 'detail' ? (
+      {route.kind === 'public' ? (
+        <PublicProjectScreen idOrSlug={route.idOrSlug} onBack={handlePublicBack} />
+      ) : screen === 'detail' ? (
         <ProjectDetailScreen
           details={projectDetails}
           loading={detailLoading}
@@ -851,6 +1035,7 @@ function App() {
             projectId={selectedProjectId}
             onBack={handleBack}
             onOpenDetails={(id) => void handleOpenProject(id)}
+            onOpenPublic={(idOrSlug) => handleOpenPublicProject(idOrSlug)}
             onAfterSave={() => loadProjects()}
           />
         ) : (
@@ -859,16 +1044,39 @@ function App() {
       ) : (
         <>
           <header className="header">
-            <h1 className="header-title">Мои проекты</h1>
+            <h1 className="header-title">{feed === 'my' ? 'Мои проекты' : 'Публичные'}</h1>
             <p className="header-subtitle">{isDemo ? 'Подключите API для работы с реальными данными' : 'Управление проектами'}</p>
             {authError && <p className="auth-error">{authError}</p>}
           </header>
 
           <main className="main">
             <section className="projects">
-              <h2 className="section-title">Мои проекты</h2>
+              <h2 className="section-title">{feed === 'my' ? 'Мои проекты' : 'Публичные'}</h2>
 
-              {loading ? (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className={`btn ${feed === 'my' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.6rem 0.75rem' }}
+                  onClick={() => setFeed('my')}
+                >
+                  Мои проекты
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${feed === 'public' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.6rem 0.75rem' }}
+                  onClick={() => {
+                    setFeed('public');
+                    void loadPublicProjects();
+                  }}
+                >
+                  Публичные
+                </button>
+              </div>
+
+              {feed === 'my' ? (
+                loading ? (
                 bootWatchdogFired ? (
                   <InitDiagnosticsScreen apiBaseUrl={import.meta.env.VITE_API_PUBLIC_URL || ''} onRetry={loadProjects} />
                 ) : (
@@ -911,6 +1119,50 @@ function App() {
                 >
                   {projects.map((project) => (
                     <ProjectCard key={project.id} project={project} onOpen={handleOpenProject} onContinue={handleOpenWizard} />
+                  ))}
+                </div>
+              )
+              ) : publicLoading ? (
+                <LoadingSpinner />
+              ) : publicError ? (
+                <ErrorMessage message={publicError} details={publicErrorDetails} fetchInfo={publicFetchErrorInfo} onRetry={loadPublicProjects} />
+              ) : publicProjects.length === 0 ? (
+                <div className="empty-state">
+                  <p>Пока нет опубликованных проектов</p>
+                </div>
+              ) : (
+                <div
+                  className="projects-list"
+                  onPointerDownCapture={(e) => {
+                    recordTapFromReactEvent('pointerdown', (e as any).nativeEvent);
+                    const t = e.target as HTMLElement | null;
+                    console.log(
+                      `[DEBUG] pointerdown capture target=${t?.tagName?.toLowerCase() || '-'} class=${String((t as any)?.className || '-')} x=${(e as any).clientX ?? '-'} y=${(e as any).clientY ?? '-'}`,
+                    );
+                  }}
+                  onClickCapture={(e) => {
+                    recordTapFromReactEvent('click', (e as any).nativeEvent);
+                    const t = e.target as HTMLElement | null;
+                    console.log(
+                      `[DEBUG] click capture target=${t?.tagName?.toLowerCase() || '-'} class=${String((t as any)?.className || '-')} x=${(e as any).clientX ?? '-'} y=${(e as any).clientY ?? '-'}`,
+                    );
+                  }}
+                  onTouchEndCapture={(e) => {
+                    const native = (e as any).nativeEvent as TouchEvent | undefined;
+                    const touch = native?.changedTouches?.[0];
+                    recordTapFromReactEvent('touchend', {
+                      clientX: touch?.clientX,
+                      clientY: touch?.clientY,
+                      target: (e as any).target,
+                    });
+                    const t = e.target as HTMLElement | null;
+                    console.log(
+                      `[DEBUG] touchend capture target=${t?.tagName?.toLowerCase() || '-'} class=${String((t as any)?.className || '-')}`,
+                    );
+                  }}
+                >
+                  {publicProjects.map((project) => (
+                    <PublicProjectCard key={project.id} project={project} onOpen={handleOpenPublicProject} />
                   ))}
                 </div>
               )}

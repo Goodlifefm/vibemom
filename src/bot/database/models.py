@@ -113,6 +113,11 @@ class Submission(Base):
     answers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     rendered_post: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_step: Mapped[str | None] = mapped_column(VARCHAR(50), nullable=True)
+    # Mini App public publishing (MVP).
+    published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    public_slug: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True, index=True)
+    show_contacts: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     fix_request: Mapped[str | None] = mapped_column(Text, nullable=True)
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
