@@ -17,6 +17,7 @@ MENU_PREFIX = v2_callbacks.MENU_PREFIX
 CB_MENU = "menu"  # menu:* actions
 CB_WIZ = "wiz"    # wiz:* wizard actions
 CB_POST = "post"  # post:* publish/moderation
+CB_MOD = "moderation"  # moderation:* approve/reject
 
 
 def persistent_reply_kb() -> ReplyKeyboardMarkup:
@@ -37,7 +38,6 @@ def reply_menu_keyboard_full() -> ReplyKeyboardMarkup:
     
     Layout:
     Row1: 📁 Мои проекты | 🏪 Каталог
-    Row2: 📥 Реквесты | 📊 Мои реквесты / Лиды
     Row3: 🏠 Меню (full width)
     """
     return reply_menu_keyboard_with_actions()
@@ -49,7 +49,6 @@ def reply_menu_keyboard_with_actions() -> ReplyKeyboardMarkup:
     
     Layout:
     Row1: 📁 Мои проекты | 🏪 Каталог
-    Row2: 📥 Реквесты | 📊 Мои реквесты / Лиды
     Row3: 🏠 Меню (full width)
     """
     return ReplyKeyboardMarkup(
@@ -57,10 +56,6 @@ def reply_menu_keyboard_with_actions() -> ReplyKeyboardMarkup:
             [
                 KeyboardButton(text="📁 Мои проекты"),
                 KeyboardButton(text="🏪 Каталог"),
-            ],
-            [
-                KeyboardButton(text="📥 Реквесты"),
-                KeyboardButton(text="📊 Мои реквесты / Лиды"),
             ],
             [KeyboardButton(text="🏠 Меню")],
         ],
@@ -159,6 +154,17 @@ def admin_moderate_kb(project_id: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=get_copy("BTN_APPROVE").strip(), callback_data=f"mod_approve_{project_id}"),
             InlineKeyboardButton(text=get_copy("BTN_NEEDS_FIX").strip(), callback_data=f"mod_fix_{project_id}"),
             InlineKeyboardButton(text=get_copy("BTN_REJECT").strip(), callback_data=f"mod_reject_{project_id}"),
+        ],
+    ])
+
+
+def moderation_kb(submission_id: str) -> InlineKeyboardMarkup:
+    """Moderation for Mini App submissions: approve / reject. callback_data: moderation:approve:{id} moderation:reject:{id}."""
+    sid = (submission_id or "").strip()
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=get_copy("BTN_APPROVE").strip(), callback_data=f"{CB_MOD}:approve:{sid}"),
+            InlineKeyboardButton(text=get_copy("BTN_REJECT").strip(), callback_data=f"{CB_MOD}:reject:{sid}"),
         ],
     ])
 

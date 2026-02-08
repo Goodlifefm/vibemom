@@ -9,10 +9,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class ProjectStatus(str, enum.Enum):
     draft = "draft"
-    pending = "pending"
-    needs_fix = "needs_fix"
-    approved = "approved"
+    submitted = "submitted"
     rejected = "rejected"
+    published = "published"
+
+    # Backward-compatible aliases (stored as the canonical values above).
+    pending = "submitted"
+    needs_fix = "rejected"
+    approved = "published"
+    published_to_tg = "published"
 
 
 class LeadType(str, enum.Enum):
@@ -58,7 +63,7 @@ class Project(Base):
     price: Mapped[str] = mapped_column(VARCHAR(200), nullable=False)
     contact: Mapped[str] = mapped_column(VARCHAR(200), nullable=False)
     status: Mapped[ProjectStatus] = mapped_column(
-        Enum(ProjectStatus), default=ProjectStatus.pending, nullable=False
+        Enum(ProjectStatus), default=ProjectStatus.draft, nullable=False
     )
     moderation_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -100,7 +105,7 @@ class Lead(Base):
 
 
 class Submission(Base):
-    """V2: submission lifecycle (draft → pending → needs_fix/approved/rejected). Links to user and optionally project."""
+    """Submission lifecycle (draft -> submitted -> rejected/published)."""
     __tablename__ = "submission"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -117,7 +122,17 @@ class Submission(Base):
     published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     public_slug: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True, index=True)
+    # Telegram autopost metadata (filled after channel publishing).
+    tg_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tg_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tg_post_url: Mapped[str | None] = mapped_column(VARCHAR(1000), nullable=True)
     show_contacts: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Moderation metadata (new flow).
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Legacy moderation metadata (kept for backward compatibility / old rows).
     fix_request: Mapped[str | None] = mapped_column(Text, nullable=True)
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

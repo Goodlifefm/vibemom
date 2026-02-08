@@ -21,10 +21,9 @@ class ProjectStatus(str, Enum):
     """Project lifecycle status."""
 
     draft = "draft"
-    pending = "pending"
-    needs_fix = "needs_fix"
-    approved = "approved"
+    submitted = "submitted"
     rejected = "rejected"
+    published = "published"
 
 
 class NextActionType(str, Enum):
@@ -129,9 +128,15 @@ class ProjectListItemDTO(BaseModel):
     updated_at: datetime
     submitted_at: datetime | None = None
 
-    # Moderation
-    has_fix_request: bool
-    fix_request_preview: str | None = None  # First 100 chars
+    # Moderation / publishing timestamps
+    reviewed_at: datetime | None = None
+    approved_at: datetime | None = None
+    rejected_at: datetime | None = None
+    rejected_reason: str | None = None
+    published_at: datetime | None = None
+
+    # Telegram publishing
+    tg_post_url: str | None = None
 
     # Derived
     current_step: str | None = None
@@ -139,7 +144,6 @@ class ProjectListItemDTO(BaseModel):
 
     # Public publishing (MVP)
     published: bool = False
-    published_at: datetime | None = None
     public_slug: str | None = None
     show_contacts: bool = False
 
@@ -218,8 +222,13 @@ class ProjectDetailsDTO(BaseModel):
     can_delete: bool
 
     # Moderation
-    fix_request: str | None = None
-    moderated_at: datetime | None = None
+    reviewed_at: datetime | None = None
+    approved_at: datetime | None = None
+    rejected_at: datetime | None = None
+    rejected_reason: str | None = None
+
+    # Telegram publishing
+    tg_post_url: str | None = None
 
     # Timestamps
     created_at: datetime
@@ -263,10 +272,22 @@ class PreviewDTO(BaseModel):
 # =============================================================================
 
 
-class PublishProjectRequestDTO(BaseModel):
-    """Request body for POST /projects/{id}/publish."""
+class SubmitProjectRequestDTO(BaseModel):
+    """Request body for POST /projects/{id}/submit."""
 
     show_contacts: bool = False
+
+
+class PublishProjectRequestDTO(SubmitProjectRequestDTO):
+    """Deprecated: kept for backward compatibility with older clients."""
+
+    pass
+
+
+class RejectProjectRequestDTO(BaseModel):
+    """Request body for POST /projects/{id}/reject (admin-only)."""
+
+    reason: str = Field(..., min_length=1, max_length=2000)
 
 
 class PublicProjectListItemDTO(BaseModel):

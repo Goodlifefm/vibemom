@@ -181,11 +181,8 @@ async def selected_request_logging(request: Request, call_next):
         and not path.endswith("/preview")
         and path.count("/") == 2
     )
-    is_project_publish = (
-        path.startswith("/projects/")
-        and path.endswith("/publish")
-        and path.count("/") == 3
-    )
+    is_project_submit = path.startswith("/projects/") and path.endswith("/submit") and path.count("/") == 3
+    is_project_withdraw = path.startswith("/projects/") and path.endswith("/withdraw") and path.count("/") == 3
     is_public_projects_list = path == "/public/projects"
     is_public_project_detail = path.startswith("/public/projects/") and path.count("/") == 3
     is_client_log = path == "/debug/client-log"
@@ -193,7 +190,8 @@ async def selected_request_logging(request: Request, call_next):
     if (
         is_projects_my
         or is_project_detail
-        or is_project_publish
+        or is_project_submit
+        or is_project_withdraw
         or is_public_projects_list
         or is_public_project_detail
         or is_client_log

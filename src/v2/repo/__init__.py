@@ -8,6 +8,7 @@ from src.v2.repo.submission import (
     update_answers_step,
     set_status,
     set_moderated,
+    set_published_to_tg,
     submit_for_moderation,
     delete_submission,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "update_answers_step",
     "set_status",
     "set_moderated",
+    "set_published_to_tg",
     "submit_for_moderation",
     "delete_submission",
     "log_admin_action",

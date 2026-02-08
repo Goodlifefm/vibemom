@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Telegram Bot Token (for validating initData)
     bot_token: str = ""
 
+    # Channel for auto-posting approved projects.
+    # Prefer TARGET_CHANNEL_ID; FEED_CHAT_ID is kept for backward compatibility.
+    target_channel_id: str = ""
+    feed_chat_id: str = ""  # Legacy alias for target_channel_id
+
     # JWT Settings
     api_jwt_secret: str = "change-me-in-production"
     api_jwt_ttl_min: int = 43200  # 30 days in minutes
@@ -67,6 +72,10 @@ class Settings(BaseSettings):
         if not raw:
             return set()
         return {int(x.strip()) for x in raw.split(",") if x.strip()}
+
+    def get_target_channel_id(self) -> str:
+        """Get configured channel ID/username for auto-posting (TARGET_CHANNEL_ID preferred)."""
+        return (self.target_channel_id or self.feed_chat_id or "").strip()
 
     def get_cors_origins(self) -> list[str]:
         """

@@ -513,7 +513,7 @@ export async function authenticate(initData: string): Promise<AuthResponse> {
 
 export interface Project {
   id: string;
-  status: 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
+  status: 'draft' | 'submitted' | 'rejected' | 'published';
   revision: number;
   title_short: string;
   completion_percent: number;
@@ -529,21 +529,23 @@ export interface Project {
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
-  has_fix_request: boolean;
-  fix_request_preview: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  rejected_reason?: string | null;
+  published_at?: string | null;
+  tg_post_url?: string | null;
   current_step: string | null;
   missing_fields: string[];
 
   // Public publishing (MVP)
   published?: boolean;
-  published_at?: string | null;
   public_slug?: string | null;
   show_contacts?: boolean;
 }
 
 export interface ProjectDetails {
   id: string;
-  status: 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
+  status: 'draft' | 'submitted' | 'rejected' | 'published';
   revision: number;
   current_step: string | null;
   answers: Record<string, unknown> | null;
@@ -561,8 +563,10 @@ export interface ProjectDetails {
   can_submit: boolean;
   can_archive: boolean;
   can_delete: boolean;
-  fix_request: string | null;
-  moderated_at: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  rejected_reason?: string | null;
+  tg_post_url?: string | null;
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
@@ -652,12 +656,30 @@ export interface PublicProject {
 }
 
 /**
- * Publish a project to the public storefront.
+ * Submit a project for moderation.
  */
-export async function publishProject(id: string, params: { show_contacts: boolean }): Promise<PublicProject> {
-  return request<PublicProject>(`/projects/${id}/publish`, {
+export async function submitProject(id: string, params: { show_contacts: boolean }): Promise<ProjectDetails> {
+  return request<ProjectDetails>(`/projects/${id}/submit`, {
     method: 'POST',
     body: { show_contacts: params.show_contacts },
+  });
+}
+
+/**
+ * Withdraw a project from moderation back to draft.
+ */
+export async function withdrawProject(id: string): Promise<ProjectDetails> {
+  return request<ProjectDetails>(`/projects/${id}/withdraw`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Delete a project (only allowed for draft/rejected).
+ */
+export async function deleteProject(id: string): Promise<void> {
+  await request(`/projects/${id}`, {
+    method: 'DELETE',
   });
 }
 

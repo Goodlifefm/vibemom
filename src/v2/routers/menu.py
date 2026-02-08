@@ -391,30 +391,17 @@ async def cb_menu_catalog(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == f"{CB_PREFIX}:request")
 async def cb_menu_request(callback: CallbackQuery, state: FSMContext) -> None:
-    """Start buyer request flow."""
+    """Buyer request flow is disabled (product simplification)."""
     await callback.answer()
     user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_action=request user_id=%s", user_id)
-    
+    logger.info("menu_action=request (disabled) user_id=%s", user_id)
+
     if callback.message:
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-    
-    from src.bot.fsm.states import BuyerRequestStates
-    
+        await callback.message.answer(
+            "Функция реквестов отключена.",
+            reply_markup=kb_to_menu_only(),
+        )
     await state.clear()
-    await get_or_create_user(
-        user_id,
-        callback.from_user.username if callback.from_user else None,
-        callback.from_user.full_name if callback.from_user else None,
-    )
-    await state.set_state(BuyerRequestStates.what)
-    
-    text = "<b>📥 Оставить заявку</b>\n\nОпишите, что вы ищете. Ответьте на несколько вопросов."
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.message.answer(get_copy("REQUEST_Q1_WHAT"))
 
 
 # =============================================================================
@@ -423,67 +410,18 @@ async def cb_menu_request(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == f"{CB_PREFIX}:my_requests_leads")
 async def cb_menu_my_requests_leads(callback: CallbackQuery, state: FSMContext) -> None:
-    """Show combined my requests and leads screen."""
+    """Requests/leads are disabled (product simplification)."""
     await callback.answer()
     user_id = callback.from_user.id if callback.from_user else 0
-    logger.info("menu_action=my_requests_leads user_id=%s", user_id)
-    
-    from src.bot.services import list_my_requests_with_projects, list_leads_for_seller
-    from src.bot.renderer import render_buyer_request_summary
-    
-    user = await get_or_create_user(
-        user_id,
-        callback.from_user.username if callback.from_user else None,
-        callback.from_user.full_name if callback.from_user else None,
-    )
-    
-    # Get requests (buyer) and leads (seller)
-    requests_list, leads_list, all_projects = await list_my_requests_with_projects(user.id)
-    my_projects, seller_leads = await list_leads_for_seller(user.id)
-    
-    lines = ["<b>📊 Мои реквесты / Лиды</b>", ""]
-    
-    # Requests section
-    if requests_list:
-        lines.append("<b>📥 Мои заявки (покупатель)</b>")
-        lines.append("")
-        lead_by_req = {}
-        for lead in leads_list:
-            if lead.buyer_request_id:
-                lead_by_req.setdefault(lead.buyer_request_id, []).append(lead)
-        
-        for req in requests_list[:5]:
-            lines.append(render_buyer_request_summary(req.what, req.budget, req.contact))
-            for lead in lead_by_req.get(req.id, [])[:2]:
-                p = all_projects.get(lead.project_id)
-                if p:
-                    lines.append(f"  → {p.title[:40]}")
-        lines.append("")
-    
-    # Leads section
-    if my_projects and seller_leads:
-        lines.append("<b>👥 Мои лиды (продавец)</b>")
-        lines.append("")
-        proj_by_id = {p.id: p for p in my_projects}
-        for lead in seller_leads[:5]:
-            p = proj_by_id.get(lead.project_id)
-            if p:
-                lines.append(f"• {p.title[:40]} — лид")
-        lines.append("")
-    
-    if not requests_list and not seller_leads:
-        lines.append("Пока нет заявок и лидов.")
-        lines.append("")
-        lines.append("• /request — оставить заявку (как покупатель)")
-        lines.append("• Создайте проект, чтобы получать лиды (как продавец)")
-    
-    text = "\n".join(lines)
-    
+    logger.info("menu_action=my_requests_leads (disabled) user_id=%s", user_id)
+
     if callback.message:
+        text = "Функция реквестов/лидов отключена."
         try:
-            await callback.message.edit_text(text, reply_markup=kb_back_close(), parse_mode="HTML")
+            await callback.message.edit_text(text, reply_markup=kb_back_close())
         except Exception:
-            await callback.message.answer(text, reply_markup=kb_back_close(), parse_mode="HTML")
+            await callback.message.answer(text, reply_markup=kb_back_close())
+    await state.clear()
 
 
 # =============================================================================
@@ -609,6 +547,11 @@ async def cmd_request_v2(message: Message, state: FSMContext) -> None:
     """V2 /request handler."""
     user_id = message.from_user.id if message.from_user else 0
     logger.info("cmd=request user_id=%s", user_id)
+
+    # Requests/leads flow disabled (product simplification).
+    await state.clear()
+    await message.answer("Функция реквестов отключена.", reply_markup=kb_to_menu_only())
+    return
     
     from src.bot.fsm.states import BuyerRequestStates
     
@@ -630,6 +573,11 @@ async def cmd_my_requests_v2(message: Message, state: FSMContext) -> None:
     """V2 /my_requests handler."""
     user_id = message.from_user.id if message.from_user else 0
     logger.info("cmd=my_requests user_id=%s", user_id)
+
+    # Requests/leads flow disabled (product simplification).
+    await state.clear()
+    await message.answer("Функция реквестов/лидов отключена.", reply_markup=kb_to_menu_only())
+    return
     
     from src.bot.services import list_my_requests_with_projects
     from src.bot.renderer import render_buyer_request_summary, render_project_post
@@ -677,6 +625,11 @@ async def cmd_leads_v2(message: Message, state: FSMContext) -> None:
     """V2 /leads handler."""
     user_id = message.from_user.id if message.from_user else 0
     logger.info("cmd=leads user_id=%s", user_id)
+
+    # Requests/leads flow disabled (product simplification).
+    await state.clear()
+    await message.answer("Функция реквестов/лидов отключена.", reply_markup=kb_to_menu_only())
+    return
     
     from src.bot.services import list_leads_for_seller
     from src.bot.renderer import render_project_post
@@ -743,7 +696,12 @@ async def handle_reply_request(message: Message, state: FSMContext) -> None:
 async def handle_reply_my_requests_leads(message: Message, state: FSMContext) -> None:
     """Handle '📊 Мои реквесты / Лиды' reply button."""
     user_id = message.from_user.id if message.from_user else 0
-    logger.info("reply_btn=my_requests_leads user_id=%s", user_id)
+    logger.info("reply_btn=my_requests_leads (disabled) user_id=%s", user_id)
+
+    # Requests/leads flow disabled (product simplification).
+    await state.clear()
+    await message.answer("Функция реквестов/лидов отключена.", reply_markup=kb_to_menu_only())
+    return
     
     from src.bot.services import list_my_requests_with_projects, list_leads_for_seller
     from src.bot.renderer import render_buyer_request_summary

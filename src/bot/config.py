@@ -31,7 +31,10 @@ class Settings(BaseSettings):
     admin_telegram_ids: str = ""
     admin_ids: str = ""  # preferred over admin_telegram_ids (backward compat)
     admin_chat_id: str = ""
-    feed_chat_id: str = ""  # FEED_CHAT_ID: канал для автопубликации одобренных проектов (@vibecode777 или id)
+    # Channel for auto-posting approved projects.
+    # Prefer TARGET_CHANNEL_ID; FEED_CHAT_ID is kept for backward compatibility.
+    target_channel_id: str = ""
+    feed_chat_id: str = ""  # Legacy alias for target_channel_id
     log_level: str = "INFO"
     app_env: str = "local"  # local, ci, test, production
     auto_migrate: bool = True
@@ -65,6 +68,10 @@ class Settings(BaseSettings):
         if not raw:
             return set()
         return {int(x.strip()) for x in raw.split(",") if x.strip()}
+
+    def get_target_channel_id(self) -> str:
+        """Get configured channel ID/username for auto-posting (TARGET_CHANNEL_ID preferred)."""
+        return (self.target_channel_id or self.feed_chat_id or "").strip()
 
     def get_v2_allowlist_ids(self) -> set[int]:
         if not self.v2_allowlist:

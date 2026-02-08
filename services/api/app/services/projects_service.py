@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import httpx
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum as SQLEnum, ForeignKey, Integer, Text, VARCHAR, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,19 @@ logger = get_logger(__name__)
 
 
 # =============================================================================
+# Exceptions
+# =============================================================================
+
+
+class ProjectStatusConflictError(Exception):
+    """Raised when an action is not allowed for the current project status."""
+
+
+class TelegramPublishError(Exception):
+    """Raised when Telegram channel publishing fails."""
+
+
+# =============================================================================
 # Database Models (inline to avoid circular imports with bot)
 # =============================================================================
 
@@ -48,7 +62,7 @@ class Submission(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user.id"), nullable=False)
     project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(
-        SQLEnum("draft", "pending", "needs_fix", "approved", "rejected", name="projectstatus"),
+        SQLEnum("draft", "submitted", "rejected", "published", name="projectstatus"),
         default="draft",
         nullable=False,
     )
@@ -60,7 +74,17 @@ class Submission(Base):
     published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     public_slug: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
+    # Telegram autopost metadata (filled after channel publishing).
+    tg_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tg_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tg_post_url: Mapped[str | None] = mapped_column(VARCHAR(1000), nullable=True)
     show_contacts: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Moderation metadata (new flow).
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Legacy moderation fields (kept for backward compatibility / old rows).
     fix_request: Mapped[str | None] = mapped_column(Text, nullable=True)
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -168,6 +192,63 @@ class ProjectsService:
 
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    @staticmethod
+    def _parse_target_chat_id(raw: str) -> int | str:
+        value = (raw or "").strip()
+        if not value:
+            raise TelegramPublishError("TARGET_CHANNEL_ID is not configured")
+        if value.lstrip("-").isdigit():
+            return int(value)
+        return value
+
+    @staticmethod
+    def _build_tg_post_url(*, chat_id: int, username: str | None, message_id: int) -> str | None:
+        if username:
+            return f"https://t.me/{username}/{message_id}"
+        s = str(chat_id)
+        if s.startswith("-100"):
+            # Private chats/channels use an internal id in t.me/c links (strip the -100 prefix).
+            return f"https://t.me/c/{s[4:]}/{message_id}"
+        return None
+
+    async def _tg_send_message(
+        self,
+        *,
+        bot_token: str,
+        chat_id: int | str,
+        text: str,
+        disable_web_page_preview: bool = False,
+    ) -> dict[str, Any]:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": bool(disable_web_page_preview),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise TelegramPublishError(f"Telegram sendMessage failed: {type(exc).__name__}: {exc}") from exc
+
+        try:
+            data = resp.json()
+        except Exception as exc:
+            raise TelegramPublishError("Telegram sendMessage returned non-JSON response") from exc
+
+        if not isinstance(data, dict) or not data.get("ok"):
+            desc = None
+            if isinstance(data, dict):
+                desc = data.get("description")
+            raise TelegramPublishError(f"Telegram sendMessage error: {desc or 'unknown error'}")
+
+        result = data.get("result")
+        if not isinstance(result, dict):
+            raise TelegramPublishError("Telegram sendMessage returned unexpected payload")
+        return result
 
     async def get_user_by_telegram_id(self, telegram_id: int) -> User | None:
         """Get user by Telegram ID."""
@@ -305,6 +386,10 @@ class ProjectsService:
         if not is_admin and user_id is not None and submission.user_id != user_id:
             return None
 
+        status = ProjectStatus(submission.status)
+        if status not in (ProjectStatus.draft, ProjectStatus.rejected):
+            raise ProjectStatusConflictError("In moderation. Withdraw first.")
+
         updates = patch.model_dump(exclude_unset=True)
         if not updates:
             return self._to_details_dto(submission)
@@ -331,16 +416,17 @@ class ProjectsService:
         return self._to_details_dto(submission)
 
     # =========================================================================
-    # Public publishing (Mini App MVP)
+    # Moderation Flow (Mini App MVP)
     # =========================================================================
 
-    async def publish_project(
+    async def submit_project(
         self,
         project_id: str,
         user_id: int,
-        show_contacts: bool = False,
-    ) -> PublicProjectDTO | None:
-        """Publish project to the public storefront."""
+        *,
+        show_contacts: bool | None = None,
+    ) -> ProjectDetailsDTO | None:
+        """Submit project for moderation (author only)."""
         try:
             pid = uuid.UUID(project_id)
         except ValueError:
@@ -351,43 +437,243 @@ class ProjectsService:
         if submission is None or submission.user_id != user_id:
             return None
 
+        status = ProjectStatus(submission.status)
+        if status not in (ProjectStatus.draft, ProjectStatus.rejected):
+            raise ProjectStatusConflictError("In moderation. Withdraw first.")
+
         answers: dict[str, Any] = dict(submission.answers or {})
         missing = self._calculate_mvp_missing(answers)
         if missing:
             raise ValueError(f"Missing required fields: {', '.join(missing)}")
 
         now = datetime.utcnow()
-        if submission.published is not True:
-            submission.published = True
-            submission.published_at = now
-        elif submission.published_at is None:
-            submission.published_at = now
+        submission.status = ProjectStatus.submitted.value
+        submission.submitted_at = now
+        submission.updated_at = now
 
-        submission.show_contacts = bool(show_contacts)
+        if show_contacts is not None:
+            submission.show_contacts = bool(show_contacts)
+
+        # Clear previous review metadata for a fresh moderation cycle.
+        submission.reviewed_at = None
+        submission.approved_at = None
+        submission.rejected_at = None
+        submission.rejected_reason = None
+
+        await self.session.commit()
+        await self.session.refresh(submission)
+
+        logger.info(
+            "Submitted project for moderation",
+            extra={
+                "project_id": str(submission.id),
+                "user_id": user_id,
+            },
+        )
+
+        return self._to_details_dto(submission)
+
+    async def withdraw_project(self, project_id: str, user_id: int) -> ProjectDetailsDTO | None:
+        """Withdraw a submitted project back to draft (author only)."""
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            return None
+
+        result = await self.session.execute(select(Submission).where(Submission.id == pid))
+        submission = result.scalar_one_or_none()
+        if submission is None or submission.user_id != user_id:
+            return None
+
+        status = ProjectStatus(submission.status)
+        if status != ProjectStatus.submitted:
+            raise ProjectStatusConflictError("Only submitted projects can be withdrawn.")
+
+        now = datetime.utcnow()
+        submission.status = ProjectStatus.draft.value
+        submission.submitted_at = None
         submission.updated_at = now
 
         await self.session.commit()
         await self.session.refresh(submission)
 
         logger.info(
-            "Published project",
+            "Withdrew project from moderation",
             extra={
                 "project_id": str(submission.id),
                 "user_id": user_id,
-                "show_contacts": submission.show_contacts,
             },
         )
 
-        return self._to_public_project_dto(submission)
+        return self._to_details_dto(submission)
+
+    async def delete_project(self, project_id: str, user_id: int) -> bool:
+        """Delete project (author only). Allowed only for draft/rejected."""
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            return False
+
+        result = await self.session.execute(select(Submission).where(Submission.id == pid))
+        submission = result.scalar_one_or_none()
+        if submission is None or submission.user_id != user_id:
+            return False
+
+        status = ProjectStatus(submission.status)
+        if status not in (ProjectStatus.draft, ProjectStatus.rejected):
+            raise ProjectStatusConflictError("In moderation. Withdraw first.")
+
+        await self.session.delete(submission)
+        await self.session.commit()
+
+        logger.info(
+            "Deleted project",
+            extra={
+                "project_id": project_id,
+                "user_id": user_id,
+            },
+        )
+
+        return True
+
+    # =========================================================================
+    # Admin Moderation (approve/reject)
+    # =========================================================================
+
+    async def approve_project(self, project_id: str) -> ProjectDetailsDTO | None:
+        """
+        Approve a submitted project and publish it to the Telegram channel.
+
+        Rules:
+        - Allowed only when status == submitted
+        - Sets status = published
+        - Persists tg_chat_id/tg_message_id/tg_post_url
+        """
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            return None
+
+        result = await self.session.execute(select(Submission).where(Submission.id == pid))
+        submission = result.scalar_one_or_none()
+        if submission is None:
+            return None
+
+        status = ProjectStatus(submission.status)
+        if status != ProjectStatus.submitted:
+            raise ProjectStatusConflictError("Only submitted projects can be approved.")
+
+        from app.config import get_settings
+
+        settings = get_settings()
+        bot_token = (settings.bot_token or "").strip()
+        if not bot_token:
+            raise TelegramPublishError("BOT_TOKEN is not configured")
+
+        target_chat_id_raw = ""
+        if hasattr(settings, "get_target_channel_id"):
+            target_chat_id_raw = str(settings.get_target_channel_id() or "")
+        else:
+            # Backward-compatible envs.
+            target_chat_id_raw = str(getattr(settings, "target_channel_id", "") or getattr(settings, "feed_chat_id", "") or "")
+
+        target_chat_id = self._parse_target_chat_id(target_chat_id_raw)
+
+        public_url = self._build_public_url(self._public_id(submission))
+        post_html = self.render_preview(
+            submission.answers or {},
+            show_contacts=bool(submission.show_contacts),
+            public_url=public_url,
+        )
+        tg_result = await self._tg_send_message(
+            bot_token=bot_token,
+            chat_id=target_chat_id,
+            text=post_html,
+            disable_web_page_preview=False,
+        )
+
+        try:
+            message_id = int(tg_result.get("message_id"))
+        except Exception as exc:
+            raise TelegramPublishError("Telegram sendMessage returned missing/invalid message_id") from exc
+
+        chat = tg_result.get("chat") if isinstance(tg_result.get("chat"), dict) else {}
+        try:
+            tg_chat_id = int(chat.get("id")) if chat and chat.get("id") is not None else None
+        except Exception:
+            tg_chat_id = None
+        username = chat.get("username") if chat else None
+
+        # Best-effort link build (username preferred).
+        tg_post_url = None
+        if tg_chat_id is not None:
+            tg_post_url = self._build_tg_post_url(chat_id=tg_chat_id, username=username, message_id=message_id)
+
+        now = datetime.utcnow()
+        submission.status = ProjectStatus.published.value
+        submission.reviewed_at = now
+        submission.approved_at = now  # legacy/backward-compatible
+        submission.rejected_at = None
+        submission.rejected_reason = None
+        submission.published = True  # legacy flag
+        submission.published_at = now
+        submission.tg_chat_id = tg_chat_id
+        submission.tg_message_id = message_id
+        submission.tg_post_url = tg_post_url
+        submission.updated_at = now
+
+        await self.session.commit()
+        await self.session.refresh(submission)
+
+        return self._to_details_dto(submission)
+
+    async def reject_project(self, project_id: str, *, reason: str) -> ProjectDetailsDTO | None:
+        """
+        Reject a submitted project (admin-only).
+
+        Rules:
+        - Allowed only when status == submitted
+        - Requires a non-empty reason
+        - Sets status = rejected and persists rejected_reason
+        """
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            return None
+
+        result = await self.session.execute(select(Submission).where(Submission.id == pid))
+        submission = result.scalar_one_or_none()
+        if submission is None:
+            return None
+
+        status = ProjectStatus(submission.status)
+        if status != ProjectStatus.submitted:
+            raise ProjectStatusConflictError("Only submitted projects can be rejected.")
+
+        clean_reason = (reason or "").strip()
+        if not clean_reason:
+            raise ValueError("Rejection reason is required.")
+
+        now = datetime.utcnow()
+        submission.status = ProjectStatus.rejected.value
+        submission.reviewed_at = now
+        submission.rejected_at = now  # legacy/backward-compatible
+        submission.rejected_reason = clean_reason
+        submission.updated_at = now
+
+        await self.session.commit()
+        await self.session.refresh(submission)
+
+        return self._to_details_dto(submission)
 
     async def list_public_projects(self, limit: int = 50, offset: int = 0) -> list[PublicProjectListItemDTO]:
-        """List published projects for the public storefront (no-auth)."""
+        """List projects published to Telegram channel (no-auth)."""
         limit = max(1, min(50, int(limit)))
         offset = max(0, int(offset))
 
         result = await self.session.execute(
             select(Submission)
-            .where(Submission.published.is_(True))
+            .where(Submission.status == ProjectStatus.published.value)
             .order_by(Submission.published_at.desc().nullslast(), Submission.updated_at.desc())
             .limit(limit)
             .offset(offset)
@@ -396,12 +682,12 @@ class ProjectsService:
         return [self._to_public_list_item_dto(s) for s in submissions]
 
     async def get_public_project_by_identifier(self, id_or_slug: str) -> PublicProjectDTO | None:
-        """Get a published project by UUID or public_slug (no-auth)."""
+        """Get a project published to Telegram by UUID or public_slug (no-auth)."""
         raw = (id_or_slug or "").strip()
         if not raw:
             return None
 
-        stmt = select(Submission).where(Submission.published.is_(True))
+        stmt = select(Submission).where(Submission.status == ProjectStatus.published.value)
         try:
             pid = uuid.UUID(raw)
             stmt = stmt.where(Submission.id == pid)
@@ -415,7 +701,13 @@ class ProjectsService:
 
         return self._to_public_project_dto(submission)
 
-    def render_preview(self, answers: dict[str, Any] | None) -> str:
+    def render_preview(
+        self,
+        answers: dict[str, Any] | None,
+        *,
+        show_contacts: bool = True,
+        public_url: str | None = None,
+    ) -> str:
         """
         Render project post HTML from answers.
 
@@ -472,18 +764,23 @@ class ProjectsService:
         if link:
             sections.append(f"<b>🔗 Ссылка</b>\n{self._escape(str(link))}")
 
+        # Public page (optional)
+        if public_url:
+            sections.append(f"<b>🌐 Публичная страница</b>\n{self._escape(public_url)}")
+
         # Price
         price = self._format_price(answers)
         if price:
             sections.append(f"<b>💰 Цена</b>\n{self._escape(price)}")
 
         # Contact
-        contact = self._get_value(answers, "author_contact_value", "author_contact", "contact")
-        if contact:
-            author_name = self._get_value(answers, "author_name")
-            if author_name:
-                contact = f"{author_name}\n{contact}"
-            sections.append(f"<b>📬 Контакт</b>\n{self._escape(contact)}")
+        if show_contacts:
+            contact = self._get_value(answers, "author_contact_value", "author_contact", "contact")
+            if contact:
+                author_name = self._get_value(answers, "author_name")
+                if author_name:
+                    contact = f"{author_name}\n{contact}"
+                sections.append(f"<b>📬 Контакт</b>\n{self._escape(contact)}")
 
         return "\n\n".join(sections)
 
@@ -498,6 +795,7 @@ class ProjectsService:
 
         # Calculate completion
         filled, missing = self._calculate_completion(answers)
+        mvp_missing = self._calculate_mvp_missing(answers)
         completion_percent = int(len(filled) / len(REQUIRED_FIELDS) * 100) if REQUIRED_FIELDS else 0
 
         # Get title
@@ -508,10 +806,10 @@ class ProjectsService:
         next_action = self._get_next_action(status, missing)
 
         # Access control flags
-        can_edit = status in (ProjectStatus.draft, ProjectStatus.needs_fix)
-        can_submit = status in (ProjectStatus.draft, ProjectStatus.needs_fix) and len(missing) == 0
-        can_archive = status in (ProjectStatus.draft, ProjectStatus.needs_fix, ProjectStatus.approved)
-        can_delete = status == ProjectStatus.draft
+        can_edit = status in (ProjectStatus.draft, ProjectStatus.rejected)
+        can_submit = status in (ProjectStatus.draft, ProjectStatus.rejected) and len(mvp_missing) == 0
+        can_archive = False  # Reserved for future (no archive endpoint in Mini App MVP).
+        can_delete = status in (ProjectStatus.draft, ProjectStatus.rejected)
 
         return ProjectListItemDTO(
             id=str(submission.id),
@@ -527,12 +825,15 @@ class ProjectsService:
             created_at=submission.created_at,
             updated_at=submission.updated_at,
             submitted_at=submission.submitted_at,
-            has_fix_request=submission.fix_request is not None,
-            fix_request_preview=submission.fix_request[:100] if submission.fix_request else None,
+            reviewed_at=submission.reviewed_at,
+            approved_at=submission.approved_at,
+            rejected_at=submission.rejected_at,
+            rejected_reason=submission.rejected_reason,
+            published_at=submission.published_at,
+            tg_post_url=submission.tg_post_url,
             current_step=submission.current_step,
             missing_fields=missing,
-            published=submission.published,
-            published_at=submission.published_at,
+            published=status == ProjectStatus.published,
             public_slug=submission.public_slug,
             show_contacts=submission.show_contacts,
         )
@@ -544,6 +845,7 @@ class ProjectsService:
 
         # Calculate completion
         filled, missing = self._calculate_completion(answers)
+        mvp_missing = self._calculate_mvp_missing(answers)
         completion_percent = int(len(filled) / len(REQUIRED_FIELDS) * 100) if REQUIRED_FIELDS else 0
 
         # Normalize fields
@@ -552,14 +854,19 @@ class ProjectsService:
         # Determine next action
         next_action = self._get_next_action(status, missing)
 
-        # Render preview
-        preview_html = self.render_preview(answers)
+        # Render preview (same template used for publishing).
+        public_url = self._build_public_url(self._public_id(submission)) if status == ProjectStatus.published else None
+        preview_html = self.render_preview(
+            answers,
+            show_contacts=bool(submission.show_contacts),
+            public_url=public_url,
+        )
 
         # Access control flags
-        can_edit = status in (ProjectStatus.draft, ProjectStatus.needs_fix)
-        can_submit = status in (ProjectStatus.draft, ProjectStatus.needs_fix) and len(missing) == 0
-        can_archive = status in (ProjectStatus.draft, ProjectStatus.needs_fix, ProjectStatus.approved)
-        can_delete = status == ProjectStatus.draft
+        can_edit = status in (ProjectStatus.draft, ProjectStatus.rejected)
+        can_submit = status in (ProjectStatus.draft, ProjectStatus.rejected) and len(mvp_missing) == 0
+        can_archive = False  # Reserved for future (no archive endpoint in Mini App MVP).
+        can_delete = status in (ProjectStatus.draft, ProjectStatus.rejected)
 
         return ProjectDetailsDTO(
             id=str(submission.id),
@@ -577,12 +884,15 @@ class ProjectsService:
             can_submit=can_submit,
             can_archive=can_archive,
             can_delete=can_delete,
-            fix_request=submission.fix_request,
-            moderated_at=submission.moderated_at,
+            reviewed_at=submission.reviewed_at,
+            approved_at=submission.approved_at,
+            rejected_at=submission.rejected_at,
+            rejected_reason=submission.rejected_reason,
+            tg_post_url=submission.tg_post_url,
             created_at=submission.created_at,
             updated_at=submission.updated_at,
             submitted_at=submission.submitted_at,
-            published=submission.published,
+            published=status == ProjectStatus.published,
             published_at=submission.published_at,
             public_slug=submission.public_slug,
             show_contacts=submission.show_contacts,
@@ -691,25 +1001,20 @@ class ProjectsService:
                 "Продолжить заполнение",
                 True,
             ),
-            ProjectStatus.needs_fix: (
-                NextActionType.fix,
-                "Внести правки",
-                True,
-            ),
-            ProjectStatus.pending: (
+            ProjectStatus.submitted: (
                 NextActionType.wait,
                 "Ожидает модерации",
                 False,
             ),
-            ProjectStatus.approved: (
-                NextActionType.view,
-                "Посмотреть публикацию",
+            ProjectStatus.rejected: (
+                NextActionType.continue_form,
+                "Исправить и отправить снова",
                 True,
             ),
-            ProjectStatus.rejected: (
-                NextActionType.archived,
-                "Отклонён",
-                False,
+            ProjectStatus.published: (
+                NextActionType.view,
+                "Открыть",
+                True,
             ),
         }
 

@@ -185,8 +185,6 @@ def test_cabinet_menu_inline_kb():
     assert "m:home" in callbacks
     assert "m:my_projects" in callbacks
     assert "m:catalog" in callbacks
-    assert "m:request" in callbacks
-    assert "m:my_requests_leads" in callbacks
     assert "m:close" in callbacks
     # Resume should not be present when no active draft
     assert "m:resume" not in callbacks

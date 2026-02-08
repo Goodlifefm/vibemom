@@ -17,3 +17,8 @@ class EditorStates(StatesGroup):
     """V2 block editor: block menu and field edit."""
     block_menu = State()
     field_edit = State()
+
+
+class ModerationStates(StatesGroup):
+    """Admin moderation: collecting reject reason after pressing ❌ Reject."""
+    awaiting_reject_reason = State()

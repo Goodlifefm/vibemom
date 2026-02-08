@@ -50,8 +50,6 @@ def kb_cabinet_menu(*, has_active_draft: bool = False) -> InlineKeyboardMarkup:
     - ▶️ Продолжить заполнение (m:resume) — only if has_active_draft
     - 📁 Мои проекты (m:my_projects)
     - 🏪 Каталог (m:catalog)
-    - 📥 Реквесты (m:request)
-    - 📊 Мои реквесты / Лиды (m:my_requests_leads)
     - 📱 Кабинет (Mini App) — WebApp button if configured
     - ✕ Закрыть (m:close)
     """
@@ -67,14 +65,8 @@ def kb_cabinet_menu(*, has_active_draft: bool = False) -> InlineKeyboardMarkup:
     # 📁 Мои проекты
     rows.append([InlineKeyboardButton(text="📁 Мои проекты", callback_data=_cb("my_projects"))])
     
-    # 🏪 Каталог | 📥 Реквесты (one row)
-    rows.append([
-        InlineKeyboardButton(text="🏪 Каталог", callback_data=_cb("catalog")),
-        InlineKeyboardButton(text="📥 Реквесты", callback_data=_cb("request")),
-    ])
-    
-    # 📊 Мои реквесты / Лиды
-    rows.append([InlineKeyboardButton(text="📊 Мои реквесты / Лиды", callback_data=_cb("my_requests_leads"))])
+    # 🏪 Каталог
+    rows.append([InlineKeyboardButton(text="🏪 Каталог", callback_data=_cb("catalog"))])
     
     # 📱 Кабинет (Mini App) — WebApp button
     webapp_url = _get_webapp_url()
@@ -132,9 +124,6 @@ def kb_project_screen() -> InlineKeyboardMarkup:
     - /menu — открыть меню (m:root)
     - /resume — продолжить заполнение (m:cmd:resume)
     - /catalog — каталог проектов (m:cmd:catalog)
-    - /request — оставить заявку (m:cmd:request)
-    - /my_requests — мои заявки (m:cmd:my_requests)
-    - /leads — мои лиды (m:cmd:leads)
     + Back/Close row
     """
     rows = [
@@ -142,9 +131,6 @@ def kb_project_screen() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="/menu — меню", callback_data=_cb("root"))],
         [InlineKeyboardButton(text="/resume — продолжить", callback_data=_cb("cmd", "resume"))],
         [InlineKeyboardButton(text="/catalog — каталог", callback_data=_cb("cmd", "catalog"))],
-        [InlineKeyboardButton(text="/request — заявка", callback_data=_cb("cmd", "request"))],
-        [InlineKeyboardButton(text="/my_requests — мои заявки", callback_data=_cb("cmd", "my_requests"))],
-        [InlineKeyboardButton(text="/leads — мои лиды", callback_data=_cb("cmd", "leads"))],
         [
             InlineKeyboardButton(text="⬅ Назад", callback_data=_cb("back")),
             InlineKeyboardButton(text="✕ Закрыть", callback_data=_cb("close")),

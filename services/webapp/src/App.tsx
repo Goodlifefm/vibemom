@@ -8,6 +8,9 @@ import {
   clearToken,
   authenticate,
   createDraft,
+  submitProject,
+  withdrawProject,
+  deleteProject,
   getApiErrorInfo,
   getProject,
   getProjects,
@@ -26,7 +29,7 @@ import { getLastErrors, getLastRequest, installGlobalErrorTracking } from './lib
 import { isSelfTestEnabled } from './lib/selfTest';
 import { installGlobalTapTracking, recordTapFromReactEvent } from './lib/tapTracker';
 
-type ProjectStatus = 'draft' | 'pending' | 'needs_fix' | 'approved' | 'rejected';
+type ProjectStatus = 'draft' | 'submitted' | 'rejected' | 'published';
 type RouteState = { kind: 'app' } | { kind: 'public'; idOrSlug: string };
 type FeedTab = 'my' | 'public';
 
@@ -67,15 +70,13 @@ const DEMO_PROJECTS: Project[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     submitted_at: null,
-    has_fix_request: false,
-    fix_request_preview: null,
     current_step: 'description',
     missing_fields: ['description', 'price'],
   },
   {
     id: '2',
     title_short: 'Telegram-бот для учёта финансов',
-    status: 'pending',
+    status: 'submitted',
     revision: 1,
     completion_percent: 100,
     next_action: { action: 'wait', label: 'Ожидание', cta_enabled: false },
@@ -86,15 +87,13 @@ const DEMO_PROJECTS: Project[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     submitted_at: new Date().toISOString(),
-    has_fix_request: false,
-    fix_request_preview: null,
     current_step: null,
     missing_fields: [],
   },
   {
     id: '3',
     title_short: 'Генератор контента на GPT-4',
-    status: 'approved',
+    status: 'published',
     revision: 2,
     completion_percent: 100,
     next_action: { action: 'view', label: 'Просмотр', cta_enabled: true },
@@ -105,8 +104,6 @@ const DEMO_PROJECTS: Project[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     submitted_at: new Date().toISOString(),
-    has_fix_request: false,
-    fix_request_preview: null,
     current_step: null,
     missing_fields: [],
   },
@@ -114,10 +111,9 @@ const DEMO_PROJECTS: Project[] = [
 
 const STATUS_LABELS: Record<ProjectStatus, { label: string; className: string }> = {
   draft: { label: 'Черновик', className: 'badge-draft' },
-  pending: { label: 'На модерации', className: 'badge-pending' },
-  needs_fix: { label: 'Требует правок', className: 'badge-needs-fix' },
-  approved: { label: 'Одобрен', className: 'badge-approved' },
+  submitted: { label: 'На модерации', className: 'badge-submitted' },
   rejected: { label: 'Отклонён', className: 'badge-rejected' },
+  published: { label: 'Опубликовано', className: 'badge-published' },
 };
 
 function isApiUnavailableError(error: ApiErrorInfo): boolean {
@@ -144,17 +140,23 @@ function ProjectCard({
   project,
   onOpen,
   onContinue,
+  onSubmit,
+  onWithdraw,
+  onDelete,
+  onViewPublic,
 }: {
   project: Project;
   onOpen: (id: string) => void;
   onContinue: (id: string) => void;
+  onSubmit: (id: string) => void;
+  onWithdraw: (id: string) => void;
+  onDelete: (id: string) => void;
+  onViewPublic: (idOrSlug: string) => void;
 }) {
   const statusInfo = STATUS_LABELS[project.status] || STATUS_LABELS.draft;
   const mvpPercent = calcMvpPercentFromListItem(project);
-  const canContinue = (project.status === 'draft' || project.status === 'needs_fix') && mvpPercent < 100;
-  const ctaLabel = canContinue
-    ? '\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435'
-    : '\u041E\u0442\u043A\u0440\u044B\u0442\u044C';
+  const isEditable = project.status === 'draft' || project.status === 'rejected';
+  const publicId = (project.public_slug || '').trim() || project.id;
 
   const lastFireRef = useRef(0);
   const fireOpen = useCallback(
@@ -202,27 +204,80 @@ function ProjectCard({
         <p className="progress-text">
           {mvpPercent}% \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E (MVP)
         </p>
-        {project.has_fix_request && project.fix_request_preview && (
-          <p className="fix-request">! {project.fix_request_preview}</p>
-        )}
+        {project.status === 'rejected' && project.rejected_reason ? <p className="fix-request">! {project.rejected_reason}</p> : null}
       </div>
       <div className="card-footer">
-        <button
-          type="button"
-          className="btn btn-primary btn-compact"
-          onPointerUp={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (canContinue) {
-              onContinue(project.id);
-            } else {
-              onOpen(project.id);
-            }
-          }}
-        >
-          {ctaLabel}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {project.status === 'submitted' ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-compact"
+              onPointerUp={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onWithdraw(project.id);
+              }}
+            >
+              Отозвать
+            </button>
+          ) : project.status === 'published' ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-compact"
+              onPointerUp={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewPublic(publicId);
+              }}
+            >
+              Смотреть
+            </button>
+          ) : null}
+
+          {isEditable ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                onPointerUp={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onContinue(project.id);
+                }}
+              >
+                Редактировать
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-compact"
+                disabled={!project.can_submit}
+                onPointerUp={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSubmit(project.id);
+                }}
+              >
+                На модерацию
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                onPointerUp={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(project.id);
+                }}
+              >
+                Удалить
+              </button>
+            </>
+          ) : null}
+        </div>
         <svg className="card-chevron" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path
             d="M7.5 4L13.5 10L7.5 16"
@@ -567,7 +622,7 @@ function ProjectDetailScreen({
           <p className="progress-text">{details.completion_percent}% заполнено</p>
         </div>
 
-        {details.fix_request && <div className="fix-request">! {details.fix_request}</div>}
+        {details.status === 'rejected' && details.rejected_reason ? <div className="fix-request">! {details.rejected_reason}</div> : null}
 
         {details.missing_fields.length > 0 && (
           <div className="detail-section">
@@ -1004,6 +1059,113 @@ function App() {
     [apiUnavailable, isDemo],
   );
 
+  const handleWithdraw = useCallback(
+    async (id: string) => {
+      if (isDemo) {
+        return;
+      }
+      if (apiUnavailable) {
+        return;
+      }
+
+      try {
+        if (!getToken()) {
+          await tryAuth();
+        }
+
+        const updated = await withdrawProject(id);
+        setToastMessage('Проект отозван');
+
+        // Refresh list in background.
+        await loadProjects();
+
+        if (selectedProjectId === id) {
+          setProjectDetails(updated);
+        }
+      } catch (err) {
+        const info = getApiErrorInfo(err);
+        if (isApiUnavailableError(info)) {
+          setApiUnavailable(info);
+        } else {
+          handleApiFailure(err, 'Не удалось отозвать проект');
+        }
+      }
+    },
+    [apiUnavailable, handleApiFailure, isDemo, loadProjects, selectedProjectId, tryAuth],
+  );
+
+  const handleSubmitFromList = useCallback(
+    async (id: string) => {
+      if (isDemo) {
+        return;
+      }
+      if (apiUnavailable) {
+        return;
+      }
+
+      const showContacts = Boolean(projects.find((p) => p.id === id)?.show_contacts);
+
+      try {
+        if (!getToken()) {
+          await tryAuth();
+        }
+
+        const updated = await submitProject(id, { show_contacts: showContacts });
+        setToastMessage('Проект отправлен на модерацию');
+
+        // Refresh list in background.
+        await loadProjects();
+
+        if (selectedProjectId === id) {
+          setProjectDetails(updated);
+        }
+      } catch (err) {
+        const info = getApiErrorInfo(err);
+        if (isApiUnavailableError(info)) {
+          setApiUnavailable(info);
+        } else {
+          handleApiFailure(err, 'Не удалось отправить на модерацию');
+        }
+      }
+    },
+    [apiUnavailable, handleApiFailure, isDemo, loadProjects, projects, selectedProjectId, tryAuth],
+  );
+
+  const handleDeleteFromList = useCallback(
+    async (id: string) => {
+      if (isDemo) {
+        return;
+      }
+      if (apiUnavailable) {
+        return;
+      }
+
+      const ok = window.confirm('Удалить проект?');
+      if (!ok) {
+        return;
+      }
+
+      try {
+        if (!getToken()) {
+          await tryAuth();
+        }
+
+        await deleteProject(id);
+        setToastMessage('Проект удалён');
+
+        await loadProjects();
+      } catch (err) {
+        const info = getApiErrorInfo(err);
+        if (isApiUnavailableError(info)) {
+          setApiUnavailable(info);
+        } else {
+          handleApiFailure(err, 'Не удалось удалить проект');
+        }
+      }
+    },
+    [apiUnavailable, handleApiFailure, isDemo, loadProjects, tryAuth],
+  );
+
   const handleBack = useCallback(() => {
     setScreen('list');
     setSelectedProjectId(null);
@@ -1035,7 +1197,6 @@ function App() {
             projectId={selectedProjectId}
             onBack={handleBack}
             onOpenDetails={(id) => void handleOpenProject(id)}
-            onOpenPublic={(idOrSlug) => handleOpenPublicProject(idOrSlug)}
             onAfterSave={() => loadProjects()}
           />
         ) : (
@@ -1118,7 +1279,16 @@ function App() {
                   }}
                 >
                   {projects.map((project) => (
-                    <ProjectCard key={project.id} project={project} onOpen={handleOpenProject} onContinue={handleOpenWizard} />
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      onOpen={handleOpenProject}
+                      onContinue={handleOpenWizard}
+                      onSubmit={(id) => void handleSubmitFromList(id)}
+                      onWithdraw={(id) => void handleWithdraw(id)}
+                      onDelete={(id) => void handleDeleteFromList(id)}
+                      onViewPublic={handleOpenPublicProject}
+                    />
                   ))}
                 </div>
               )
