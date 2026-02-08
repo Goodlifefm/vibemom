@@ -33,7 +33,24 @@ router = APIRouter(tags=["Debug"])
 MAX_CLIENT_LOG_BYTES = 16 * 1024
 
 
+_SUSPICIOUS_VALUE_SUBSTRINGS = [
+    # Telegram WebApp initData fragment and related parameters.
+    "tgwebappdata=",
+    "auth_date=",
+    "signature=",
+    "hash=",
+    # Generic auth material that must never end up in logs.
+    "authorization",
+    "bearer ",
+]
+
+
 def _redact(value: object) -> object:
+    if isinstance(value, str):
+        lower = value.lower()
+        if any(s in lower for s in _SUSPICIOUS_VALUE_SUBSTRINGS):
+            return "[redacted]"
+        return value
     if isinstance(value, list):
         return [_redact(item) for item in value]
     if isinstance(value, dict):
@@ -226,11 +243,14 @@ async def debug_client_log(request: Request) -> JSONResponse:
         flush=True,
     )
 
-    redacted = _redact(data if isinstance(data, (dict, list)) else {"value": data})
-    try:
-        payload_text = json.dumps(redacted, ensure_ascii=True)[:2000]
-    except Exception:
-        payload_text = "<unserializable>"
+    # Never log the full payload (even redacted). Keep only a small safe summary.
+    parse_error: str | None = None
+    if isinstance(data, dict) and isinstance(data.get("_parse_error"), str):
+        parse_error = str(data.get("_parse_error"))[:200]
+
+    keys: list[str] | None = None
+    if isinstance(data, dict):
+        keys = sorted([str(k) for k in data.keys()])[:60]
 
     logger.info(
         "Client log",
@@ -242,7 +262,10 @@ async def debug_client_log(request: Request) -> JSONResponse:
                 "path": request.url.path,
                 "user_agent": user_agent or "-",
                 "bytes": len(raw or b""),
-                "payload": payload_text,
+                "build_sha": (build_sha[:12] if isinstance(build_sha, str) else None),
+                "tap": _redact(tap) if tap else None,
+                "keys": keys,
+                "parse_error": parse_error,
             }
         },
     )

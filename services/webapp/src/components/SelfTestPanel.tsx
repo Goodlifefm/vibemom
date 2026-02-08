@@ -8,6 +8,28 @@ function normalize(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function safeLocationSnapshot(): {
+  href: string;
+  origin: string;
+  pathname: string;
+  search: string;
+  hadHash: boolean;
+  hadTgWebAppData: boolean;
+} {
+  // Telegram Mini App can embed initData in the URL fragment (#tgWebAppData=...).
+  // Never send or log location.hash (it may contain secrets/signature/hash).
+  const origin = window.location.origin;
+  const pathname = window.location.pathname;
+  const search = window.location.search;
+  const hash = String(window.location.hash || '');
+  const hadHash = hash.length > 0;
+  const hadTgWebAppData = hash.toLowerCase().includes('tgwebappdata=');
+
+  // Intentionally exclude hash.
+  const href = `${origin}${pathname}${search}`;
+  return { href, origin, pathname, search, hadHash, hadTgWebAppData };
+}
+
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => redact(item));
@@ -209,12 +231,7 @@ export function SelfTestPanel({
         build_time: build.buildTime,
         build,
         env: buildEnv || null,
-        location: {
-          href: window.location.href,
-          origin,
-          pathname: window.location.pathname,
-          search: window.location.search,
-        },
+        location: safeLocationSnapshot(),
         userAgent: String(navigator.userAgent || '').slice(0, 200),
         telegram,
         apiBaseUrl: apiBaseUrl ?? '(not configured)',
