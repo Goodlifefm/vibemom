@@ -1,6 +1,6 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getProject, getProjects, getResolvedApiBaseUrl, postClientLog, type Project } from '../lib/api';
-import { getBuildStamp } from '../lib/buildStamp';
+import { useBuildStamp } from '../lib/useBuildStamp';
 import { getLastErrors, getLastRequest, getLastRequests, trackedFetch } from '../lib/fetcher';
 import { getLastTap } from '../lib/tapTracker';
 
@@ -95,7 +95,7 @@ export function SelfTestPanel({
   onClose?: () => void;
   defaultOpen?: boolean;
 }) {
-  const build = useMemo(() => getBuildStamp(), []);
+  const build = useBuildStamp();
   const buildEnv = useMemo(
     () => normalize((import.meta.env as Record<string, unknown>)['VITE_BUILD_ENV']),
     [],

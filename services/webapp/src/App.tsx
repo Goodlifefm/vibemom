@@ -16,7 +16,7 @@ import {
   type Project,
   type ProjectDetails,
 } from './lib/api';
-import { getBuildStamp } from './lib/buildStamp';
+import { useBuildStamp } from './lib/useBuildStamp';
 import { getLastErrors, getLastRequest, installGlobalErrorTracking } from './lib/fetcher';
 import { isSelfTestEnabled } from './lib/selfTest';
 import { installGlobalTapTracking, recordTapFromReactEvent } from './lib/tapTracker';
@@ -184,15 +184,35 @@ function LoadingSpinner() {
 function ErrorMessage({
   message,
   details,
+  fetchInfo,
   onRetry,
 }: {
   message: string;
   details?: string | null;
+  fetchInfo?: ApiErrorInfo | null;
   onRetry?: () => void;
 }) {
+  const req = fetchInfo?.request ?? null;
+  const dur = req?.durationMs ?? (req?.endTs && req?.startTs ? Math.max(0, req.endTs - req.startTs) : null);
+  const startedAt = req?.startTs ? new Date(req.startTs).toLocaleString('ru') : null;
+
   return (
     <div className="error">
       <p>{message}</p>
+      {req && (
+        <p className="error-meta">
+          <span className="diagnostics-key">request</span>{' '}
+          <span className="diagnostics-value">
+            {req.method} {req.url} at {startedAt || '-'} dur={dur ?? '-'}ms status={fetchInfo?.status ?? '-'}
+          </span>
+        </p>
+      )}
+      {fetchInfo?.errorReportRequestId ? (
+        <p className="error-meta">
+          <span className="diagnostics-key">error_report_id</span>{' '}
+          <span className="diagnostics-value">{fetchInfo.errorReportRequestId}</span>
+        </p>
+      ) : null}
       {onRetry && (
         <button className="btn btn-secondary" onClick={onRetry}>
           Retry
@@ -354,6 +374,7 @@ function ProjectDetailScreen({
   loading,
   error,
   errorDetails,
+  fetchInfo,
   onBack,
   onRetry,
 }: {
@@ -361,6 +382,7 @@ function ProjectDetailScreen({
   loading: boolean;
   error: string | null;
   errorDetails: string | null;
+  fetchInfo?: ApiErrorInfo | null;
   onBack: () => void;
   onRetry: () => void;
 }) {
@@ -381,7 +403,7 @@ function ProjectDetailScreen({
         <button className="btn-back" onClick={onBack}>
           ← Назад к проектам
         </button>
-        <ErrorMessage message={error || 'Проект не найден'} details={errorDetails} onRetry={onRetry} />
+        <ErrorMessage message={error || 'Проект не найден'} details={errorDetails} fetchInfo={fetchInfo} onRetry={onRetry} />
       </div>
     );
   }
@@ -455,7 +477,7 @@ function ProjectDetailScreen({
 function App() {
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const isDemo = apiBaseUrl === null;
-  const build = useMemo(() => getBuildStamp(), []);
+  const build = useBuildStamp();
   const selfTestAutoOpen = useMemo(() => isSelfTestEnabled(), []);
   const [selfTestVisible, setSelfTestVisible] = useState(selfTestAutoOpen);
 
@@ -471,6 +493,7 @@ function App() {
   const [bootWatchdogFired, setBootWatchdogFired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [lastFetchErrorInfo, setLastFetchErrorInfo] = useState<ApiErrorInfo | null>(null);
   const [creating, setCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [apiUnavailable, setApiUnavailable] = useState<ApiErrorInfo | null>(null);
@@ -481,6 +504,7 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailErrorDetails, setDetailErrorDetails] = useState<string | null>(null);
+  const [detailFetchErrorInfo, setDetailFetchErrorInfo] = useState<ApiErrorInfo | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToastMessage(null), []);
@@ -512,9 +536,11 @@ function App() {
       setApiUnavailable(info);
       setError(null);
       setErrorDetails(null);
+      setLastFetchErrorInfo(null);
       return;
     }
     setApiUnavailable(null);
+    setLastFetchErrorInfo(info);
     const e = err instanceof Error ? err : new Error(String(err));
     setError(`Network error: ${e.name} ${e.message || info.message || fallbackMessage}`);
     setErrorDetails(
@@ -522,6 +548,8 @@ function App() {
         {
           status: info.status ?? null,
           message: info.message || fallbackMessage,
+          request: info.request ?? null,
+          error_report_id: info.errorReportRequestId ?? null,
           stack: e.stack ?? null,
           lastRequest: getLastRequest(),
         },
@@ -556,6 +584,7 @@ function App() {
       setApiUnavailable(null);
       setError(null);
       setErrorDetails(null);
+      setLastFetchErrorInfo(null);
       setAuthError(null);
       setLoading(false);
       return;
@@ -564,6 +593,7 @@ function App() {
     setLoading(true);
     setError(null);
     setErrorDetails(null);
+    setLastFetchErrorInfo(null);
     setApiUnavailable(null);
 
     try {
@@ -574,6 +604,7 @@ function App() {
       const data = await getProjects();
       setProjects(data);
       setAuthError(null);
+      setLastFetchErrorInfo(null);
     } catch (err) {
       if (err instanceof ApiError && err.kind === 'http' && err.status === 401) {
         clearToken();
@@ -584,6 +615,7 @@ function App() {
           setAuthError(null);
           setError(null);
           setErrorDetails(null);
+          setLastFetchErrorInfo(null);
           setApiUnavailable(null);
           setLoading(false);
           return;
@@ -593,9 +625,11 @@ function App() {
             setApiUnavailable(retryInfo);
             setError(null);
             setErrorDetails(null);
+            setLastFetchErrorInfo(null);
             setAuthError(null);
           } else {
             setApiUnavailable(null);
+            setLastFetchErrorInfo(retryInfo);
             setAuthError(retryInfo.message);
             const e = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
             setError(`Network error: ${e.name} ${e.message || retryInfo.message || 'Request failed'}`);
@@ -604,6 +638,8 @@ function App() {
                 {
                   status: retryInfo.status ?? null,
                   message: retryInfo.message || null,
+                  request: retryInfo.request ?? null,
+                  error_report_id: retryInfo.errorReportRequestId ?? null,
                   stack: e.stack ?? null,
                   lastRequest: getLastRequest(),
                 },
@@ -648,19 +684,36 @@ function App() {
 
     setCreating(true);
     try {
-      await createDraft();
+      if (!getToken()) {
+        await tryAuth();
+      }
+
+      const created = await createDraft();
+
+      // Jump directly into the newly created project to avoid a dead-end empty UX.
+      setScreen('detail');
+      setSelectedProjectId(created.id);
+      setProjectDetails(created);
+      setDetailError(null);
+      setDetailErrorDetails(null);
+      setDetailFetchErrorInfo(null);
+      setDetailLoading(false);
+
+      setToastMessage(`Проект создан: ${created.id.slice(0, 8)}...`);
+
+      // Refresh list in background (safe even while user is on detail screen).
       await loadProjects();
     } catch (err) {
       const info = getApiErrorInfo(err);
       if (isApiUnavailableError(info)) {
         setApiUnavailable(info);
       } else {
-        alert(`Ошибка: ${info.message || 'Не удалось создать проект'}`);
+        handleApiFailure(err, 'Не удалось создать проект');
       }
     } finally {
       setCreating(false);
     }
-  }, [apiUnavailable, isDemo, loadProjects]);
+  }, [apiUnavailable, handleApiFailure, isDemo, loadProjects, tryAuth]);
 
   const handleOpenProject = useCallback(
     async (id: string) => {
@@ -680,22 +733,27 @@ function App() {
       setDetailLoading(true);
       setDetailError(null);
       setDetailErrorDetails(null);
+      setDetailFetchErrorInfo(null);
       setProjectDetails(null);
 
       try {
         const details = await getProject(id);
         setProjectDetails(details);
+        setDetailFetchErrorInfo(null);
         console.log(`[DEBUG] loaded project details id=${id}`, details);
       } catch (err) {
         const info = getApiErrorInfo(err);
         const e = err instanceof Error ? err : new Error(String(err));
         console.error(`[DEBUG] failed to load project id=${id}`, info);
+        setDetailFetchErrorInfo(info);
         setDetailError(`Network error: ${e.name} ${e.message || info.message || 'Request failed'}`);
         setDetailErrorDetails(
           JSON.stringify(
             {
               status: info.status ?? null,
               message: info.message || null,
+              request: info.request ?? null,
+              error_report_id: info.errorReportRequestId ?? null,
               stack: e.stack ?? null,
               lastRequest: getLastRequest(),
             },
@@ -716,6 +774,7 @@ function App() {
     setProjectDetails(null);
     setDetailError(null);
     setDetailErrorDetails(null);
+    setDetailFetchErrorInfo(null);
   }, []);
 
   return (
@@ -728,6 +787,7 @@ function App() {
           loading={detailLoading}
           error={detailError}
           errorDetails={detailErrorDetails}
+          fetchInfo={detailFetchErrorInfo}
           onBack={handleBack}
           onRetry={() => selectedProjectId && handleOpenProject(selectedProjectId)}
         />
@@ -752,7 +812,7 @@ function App() {
               ) : apiUnavailable && apiBaseUrl ? (
                 <ApiUnavailablePanel apiBaseUrl={apiBaseUrl} errorInfo={apiUnavailable} onRetry={loadProjects} />
               ) : error ? (
-                <ErrorMessage message={error} details={errorDetails} onRetry={loadProjects} />
+                <ErrorMessage message={error} details={errorDetails} fetchInfo={lastFetchErrorInfo} onRetry={loadProjects} />
               ) : projects.length === 0 ? (
                 <EmptyState />
               ) : (

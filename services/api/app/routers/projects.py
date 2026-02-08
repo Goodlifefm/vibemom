@@ -43,12 +43,24 @@ async def get_my_projects(
     - Action hints: next_action, can_* flags
     - Timestamps and moderation info
     """
-    if current_user.db_id is None:
-        # User doesn't exist in DB yet, no projects
-        return []
-
     service = ProjectsService(session)
-    projects = await service.get_user_projects(current_user.db_id)
+    user_id = current_user.db_id
+
+    # Ensure user exists in DB even if auth dependency couldn't resolve db_id
+    # (e.g. first run after fresh DB, or transient DB lookup error recovery).
+    if user_id is None:
+        user = await service.get_or_create_user(
+            telegram_id=current_user.telegram_id,
+            username=current_user.username,
+            full_name=current_user.full_name,
+        )
+        user_id = user.id
+
+    projects = await service.get_user_projects(user_id)
+    if len(projects) == 0:
+        # Auto-seed "Первый проект" to avoid dead-end empty UX.
+        await service.create_seed_draft(user_id)
+        projects = await service.get_user_projects(user_id)
 
     logger.debug(
         f"Retrieved {len(projects)} projects for user",

@@ -4,17 +4,20 @@ import re
 from dataclasses import dataclass
 
 STOP_WORDS = {
-    "и", "в", "во", "не", "что", "он", "на", "я", "с", "со", "как", "а", "то", "все",
-    "она", "так", "его", "но", "да", "ты", "к", "у", "же", "вы", "за", "бы", "по",
-    "только", "её", "мне", "было", "вот", "от", "меня", "ещё", "нет", "о", "из", "ему",
-    "теперь", "когда", "уже", "вам", "ни", "бы", "до", "вас", "нибудь", "опять",
-    "ну", "или", "это", "м", "для", "мы", "под", "есть", "без", "раз", "д", "ли",
+    "Рё", "РІ", "РІРѕ", "РЅРµ", "С‡С‚Рѕ", "РѕРЅ", "РЅР°", "СЏ", "СЃ", "СЃРѕ", "РєР°Рє", "Р°", "С‚Рѕ", "РІСЃРµ",
+    "РѕРЅР°", "С‚Р°Рє", "РµРіРѕ", "РЅРѕ", "РґР°", "С‚С‹", "Рє", "Сѓ", "Р¶Рµ", "РІС‹", "Р·Р°", "Р±С‹", "РїРѕ",
+    "С‚РѕР»СЊРєРѕ", "РµС‘", "РјРЅРµ", "Р±С‹Р»Рѕ", "РІРѕС‚", "РѕС‚", "РјРµРЅСЏ", "РµС‰С‘", "РЅРµС‚", "Рѕ", "РёР·", "РµРјСѓ",
+    "С‚РµРїРµСЂСЊ", "РєРѕРіРґР°", "СѓР¶Рµ", "РІР°Рј", "РЅРё", "Р±С‹", "РґРѕ", "РІР°СЃ", "РЅРёР±СѓРґСЊ", "РѕРїСЏС‚СЊ",
+    "РЅСѓ", "РёР»Рё", "СЌС‚Рѕ", "Рј", "РґР»СЏ", "РјС‹", "РїРѕРґ", "РµСЃС‚СЊ", "Р±РµР·", "СЂР°Р·", "Рґ", "Р»Рё",
 }
 
 
 def _tokenize(text: str) -> set[str]:
     text = (text or "").lower()
-    words = re.findall(r"[а-яёa-z0-9]+", text)
+    # Keep "mojibake" Cyrillic (e.g. Р±Р°Р·Р°) as a single token by splitting on whitespace/punctuation only.
+    text = re.sub(r"[\\t\\r\\n]+", " ", text)
+    text = re.sub(r"""[\\.,;:!\\?\\(\\)\\[\\]\\{\\}<>\"'`]+""", " ", text)
+    words = [w for w in text.split(" ") if w]
     return {w for w in words if len(w) > 1 and w not in STOP_WORDS}
 
 
@@ -45,10 +48,11 @@ def score_match(
 
     budget_clean = (request_budget or "").strip().lower()
     price_clean = (project_price or "").strip().lower()
-    if budget_clean and budget_clean not in ("не важно", "по запросу", "неважно"):
+    # SPEC 07: never show random suggestions. Budget-only similarity must not pass the threshold.
+    if keyword_score > 0 and budget_clean and budget_clean not in ("РЅРµ РІР°Р¶РЅРѕ", "РїРѕ Р·Р°РїСЂРѕСЃСѓ", "РЅРµРІР°¶РЅРѕ"):
         if any(c.isdigit() for c in budget_clean) and any(c.isdigit() for c in price_clean):
             score += 20
-        elif "по запросу" in price_clean or "по запросу" in budget_clean:
+        elif "РїРѕ Р·Р°РїСЂРѕСЃСѓ" in price_clean or "РїРѕ Р·Р°РїСЂРѕСЃСѓ" in budget_clean:
             score += 10
 
     return score
@@ -74,3 +78,4 @@ def filter_and_sort_matches(
             scored.append((p, s))
     scored.sort(key=lambda x: -x[1])
     return [p for p, _ in scored]
+

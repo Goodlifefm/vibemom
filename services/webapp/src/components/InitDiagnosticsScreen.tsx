@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getBuildStamp } from '../lib/buildStamp';
+import { useBuildStamp } from '../lib/useBuildStamp';
 import { trackedFetch } from '../lib/fetcher';
 
 const USER_AGENT_MAX_LEN = 160;
@@ -87,7 +87,7 @@ export function InitDiagnosticsScreen({
   apiBaseUrl: string;
   onRetry?: () => void;
 }) {
-  const build = useMemo(() => getBuildStamp(), []);
+  const build = useBuildStamp();
   const userAgent = useMemo(() => truncate(navigator.userAgent ?? '', USER_AGENT_MAX_LEN), []);
   const origin = useMemo(() => document.location.origin, []);
 

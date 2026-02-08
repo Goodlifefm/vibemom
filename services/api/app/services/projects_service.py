@@ -201,13 +201,13 @@ class ProjectsService:
 
         return [self._to_list_item_dto(s) for s in submissions]
 
-    async def create_draft(self, user_id: int) -> ProjectDetailsDTO:
-        """Create a new draft submission."""
+    async def _create_draft_submission(self, user_id: int, answers: dict | None = None) -> Submission:
+        """Create a draft submission row and return the ORM object."""
         submission = Submission(
             user_id=user_id,
             status="draft",
             revision=0,
-            answers={},
+            answers=answers or {},
             current_step="q1",
         )
         self.session.add(submission)
@@ -216,6 +216,21 @@ class ProjectsService:
 
         logger.info(f"Created draft submission: id={submission.id}, user_id={user_id}")
 
+        return submission
+
+    async def create_draft(self, user_id: int) -> ProjectDetailsDTO:
+        """Create a new draft submission."""
+        submission = await self._create_draft_submission(user_id=user_id, answers={})
+        return self._to_details_dto(submission)
+
+    async def create_seed_draft(self, user_id: int, title: str = "Первый проект") -> ProjectDetailsDTO:
+        """Create a first draft project so the Mini App never shows an empty screen."""
+        submission = await self._create_draft_submission(
+            user_id=user_id,
+            answers={
+                "project_title": title,
+            },
+        )
         return self._to_details_dto(submission)
 
     async def get_project_by_id(
