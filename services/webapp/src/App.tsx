@@ -16,6 +16,8 @@ import {
   type Project,
   type ProjectDetails,
 } from './lib/api';
+import { WizardScreen } from './components/WizardScreen';
+import { calcMvpPercentFromListItem } from './lib/mvpWizard';
 import { useBuildStamp } from './lib/useBuildStamp';
 import { getLastErrors, getLastRequest, installGlobalErrorTracking } from './lib/fetcher';
 import { isSelfTestEnabled } from './lib/selfTest';
@@ -113,9 +115,21 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
   );
 }
 
-function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: string) => void }) {
+function ProjectCard({
+  project,
+  onOpen,
+  onContinue,
+}: {
+  project: Project;
+  onOpen: (id: string) => void;
+  onContinue: (id: string) => void;
+}) {
   const statusInfo = STATUS_LABELS[project.status] || STATUS_LABELS.draft;
-  const actionLabel = project.next_action?.label || 'Открыть';
+  const mvpPercent = calcMvpPercentFromListItem(project);
+  const canContinue = (project.status === 'draft' || project.status === 'needs_fix') && mvpPercent < 100;
+  const ctaLabel = canContinue
+    ? '\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435'
+    : '\u041E\u0442\u043A\u0440\u044B\u0442\u044C';
 
   const lastFireRef = useRef(0);
   const fireOpen = useCallback(
@@ -128,7 +142,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
       lastFireRef.current = now;
 
       console.log(
-        `[DEBUG] open project source=${source} id=${project.id}, status=${project.status}, title="${project.title_short || 'Без названия'}"`,
+        `[DEBUG] open project source=${source} id=${project.id}, status=${project.status}, title="${project.title_short || '\\u0411\\u0435\\u0437 \\u043D\\u0430\\u0437\\u0432\\u0430\\u043D\\u0438\\u044F'}"`,
       );
       onOpen(project.id);
     },
@@ -136,28 +150,54 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
   );
 
   return (
-    <button
-      type="button"
-      className="card card-clickable card-button"
+    <div
+      role="button"
+      tabIndex={0}
+      className="card card-clickable"
       onPointerUp={() => fireOpen('pointerup')}
       onTouchEnd={() => fireOpen('touchend')}
       onClick={() => fireOpen('click')}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          fireOpen('keydown');
+        }
+      }}
     >
       <div className="card-header">
-        <h3 className="card-title">{project.title_short || 'Без названия'}</h3>
+        <h3 className="card-title">
+          {project.title_short || '\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F'}
+        </h3>
         <span className={`badge ${statusInfo.className}`}>{statusInfo.label}</span>
       </div>
       <div className="card-body">
         <div className="progress-bar">
-          <div className="progress-bar-fill" style={{ width: `${project.completion_percent}%` }} />
+          <div className="progress-bar-fill" style={{ width: `${mvpPercent}%` }} />
         </div>
-        <p className="progress-text">{project.completion_percent}% заполнено</p>
+        <p className="progress-text">
+          {mvpPercent}% \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E (MVP)
+        </p>
         {project.has_fix_request && project.fix_request_preview && (
           <p className="fix-request">! {project.fix_request_preview}</p>
         )}
       </div>
       <div className="card-footer">
-        <span className="card-open-btn">{actionLabel}</span>
+        <button
+          type="button"
+          className="btn btn-primary btn-compact"
+          onPointerUp={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (canContinue) {
+              onContinue(project.id);
+            } else {
+              onOpen(project.id);
+            }
+          }}
+        >
+          {ctaLabel}
+        </button>
         <svg className="card-chevron" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path
             d="M7.5 4L13.5 10L7.5 16"
@@ -168,7 +208,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: (id: strin
           />
         </svg>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -498,7 +538,7 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [apiUnavailable, setApiUnavailable] = useState<ApiErrorInfo | null>(null);
 
-  const [screen, setScreen] = useState<'list' | 'detail'>('list');
+  const [screen, setScreen] = useState<'list' | 'detail' | 'wizard'>('list');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectDetails, setProjectDetails] = useState<ProjectDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -768,6 +808,20 @@ function App() {
     [apiUnavailable, isDemo],
   );
 
+  const handleOpenWizard = useCallback(
+    (id: string) => {
+      if (isDemo) {
+        return;
+      }
+      if (apiUnavailable) {
+        return;
+      }
+      setScreen('wizard');
+      setSelectedProjectId(id);
+    },
+    [apiUnavailable, isDemo],
+  );
+
   const handleBack = useCallback(() => {
     setScreen('list');
     setSelectedProjectId(null);
@@ -791,6 +845,17 @@ function App() {
           onBack={handleBack}
           onRetry={() => selectedProjectId && handleOpenProject(selectedProjectId)}
         />
+      ) : screen === 'wizard' ? (
+        selectedProjectId ? (
+          <WizardScreen
+            projectId={selectedProjectId}
+            onBack={handleBack}
+            onOpenDetails={(id) => void handleOpenProject(id)}
+            onAfterSave={() => loadProjects()}
+          />
+        ) : (
+          <ErrorMessage message="Project ID is missing" onRetry={handleBack} />
+        )
       ) : (
         <>
           <header className="header">
@@ -845,7 +910,7 @@ function App() {
                   }}
                 >
                   {projects.map((project) => (
-                    <ProjectCard key={project.id} project={project} onOpen={handleOpenProject} />
+                    <ProjectCard key={project.id} project={project} onOpen={handleOpenProject} onContinue={handleOpenWizard} />
                   ))}
                 </div>
               )}

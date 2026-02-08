@@ -585,6 +585,27 @@ export async function getProject(id: string): Promise<ProjectDetails> {
   return request<ProjectDetails>(`/projects/${id}`);
 }
 
+export interface ProjectPatch {
+  project_title?: string | null;
+  problem?: string | null;
+  audience_type?: string | null;
+  niche?: string | null;
+  goal?: string | null;
+  author_name?: string | null;
+  author_contact_mode?: 'telegram' | 'email' | 'phone' | string | null;
+  author_contact_value?: string | null;
+}
+
+/**
+ * Partially update project fields by ID.
+ */
+export async function patchProject(id: string, patch: ProjectPatch): Promise<ProjectDetails> {
+  return request<ProjectDetails>(`/projects/${id}`, {
+    method: 'PATCH',
+    body: patch,
+  });
+}
+
 // =============================================================================
 // Debug API (no-auth endpoints)
 // =============================================================================

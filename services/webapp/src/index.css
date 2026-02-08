@@ -175,6 +175,12 @@ html, body {
   margin-top: 1.5rem;
 }
 
+.btn-compact {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 10px;
+}
+
 /* Projects section */
 .projects {
   margin-bottom: 0.5rem;
@@ -211,6 +217,24 @@ html, body {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 0.25rem;
+}
+
+/* Form inputs (Wizard MVP) */
+.form-input {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font: inherit;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(36, 129, 204, 0.15);
 }
 
 /* Fix request indicator */

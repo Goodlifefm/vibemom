@@ -221,6 +221,25 @@ class ProjectDetailsDTO(BaseModel):
     submitted_at: datetime | None = None
 
 
+class ProjectPatchDTO(BaseModel):
+    """Partial project update payload (PATCH /projects/{id}).
+
+    Updates only provided fields in submission.answers.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # MVP fields (plus contact mode paired with contact value)
+    project_title: str | None = None
+    problem: str | None = None
+    audience_type: str | None = None
+    niche: str | None = None
+    goal: str | None = None
+    author_name: str | None = None
+    author_contact_mode: str | None = None  # telegram/email/phone
+    author_contact_value: str | None = None
+
+
 class PreviewDTO(BaseModel):
     """Preview response."""
 

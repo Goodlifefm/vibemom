@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import CurrentUser, get_current_user
 from app.db import get_session
-from app.dto.models import PreviewDTO, ProjectDetailsDTO, ProjectListItemDTO
+from app.dto.models import PreviewDTO, ProjectDetailsDTO, ProjectListItemDTO, ProjectPatchDTO
 from app.logging_config import get_logger
 from app.services.projects_service import ProjectsService
 
@@ -159,6 +159,55 @@ async def get_project(
     )
 
     return project
+
+
+@router.patch(
+    "/{project_id}",
+    response_model=ProjectDetailsDTO,
+    summary="Update project (partial)",
+    description="Partially update project answers by ID. User must be owner or admin.",
+    responses={
+        400: {"description": "Invalid payload"},
+        404: {"description": "Project not found or access denied"},
+    },
+)
+async def patch_project(
+    project_id: str,
+    payload: ProjectPatchDTO,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectDetailsDTO:
+    service = ProjectsService(session)
+
+    try:
+        updated = await service.patch_project_answers(
+            project_id=project_id,
+            user_id=current_user.db_id,
+            is_admin=current_user.is_admin,
+            patch=payload,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found or access denied",
+        )
+
+    logger.info(
+        "Patched project answers",
+        extra={
+            "project_id": project_id,
+            "telegram_id": current_user.telegram_id,
+            "keys": list(payload.model_dump(exclude_unset=True).keys()),
+        },
+    )
+
+    return updated
 
 
 @router.post(

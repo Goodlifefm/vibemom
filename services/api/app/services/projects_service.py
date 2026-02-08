@@ -21,6 +21,7 @@ from app.dto.models import (
     ProjectFieldsDTO,
     ProjectListItemDTO,
     ProjectStatus,
+    ProjectPatchDTO,
 )
 from app.logging_config import get_logger
 
@@ -256,6 +257,57 @@ class ProjectsService:
         # Check access: owner or admin
         if not is_admin and user_id is not None and submission.user_id != user_id:
             return None
+
+        return self._to_details_dto(submission)
+
+    async def patch_project_answers(
+        self,
+        project_id: str,
+        patch: ProjectPatchDTO,
+        user_id: int | None = None,
+        is_admin: bool = False,
+    ) -> ProjectDetailsDTO | None:
+        """Partially update submission.answers and return updated details.
+
+        Access control:
+        - Owner can update their own projects
+        - Admin can update any project
+        """
+        try:
+            pid = uuid.UUID(project_id)
+        except ValueError:
+            return None
+
+        result = await self.session.execute(select(Submission).where(Submission.id == pid))
+        submission = result.scalar_one_or_none()
+        if submission is None:
+            return None
+
+        if not is_admin and user_id is not None and submission.user_id != user_id:
+            return None
+
+        updates = patch.model_dump(exclude_unset=True)
+        if not updates:
+            return self._to_details_dto(submission)
+
+        # Basic type validation and guardrails
+        allowed_contact_modes = {"telegram", "email", "phone"}
+        if "author_contact_mode" in updates:
+            mode = updates.get("author_contact_mode")
+            if mode is not None:
+                mode_norm = str(mode).strip().lower()
+                if mode_norm not in allowed_contact_modes:
+                    raise ValueError(f"Invalid author_contact_mode: {mode_norm}")
+                updates["author_contact_mode"] = mode_norm
+
+        answers: dict[str, Any] = dict(submission.answers or {})
+        for key, value in updates.items():
+            answers[key] = value
+
+        submission.answers = answers
+        submission.updated_at = datetime.utcnow()
+        await self.session.commit()
+        await self.session.refresh(submission)
 
         return self._to_details_dto(submission)
 
